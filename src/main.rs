@@ -1,6 +1,9 @@
 mod server;
 
-use std::{net::SocketAddr, path::PathBuf};
+use std::{
+    net::SocketAddr,
+    path::{Path, PathBuf},
+};
 
 use clap::Parser;
 use dotenvy::dotenv;
@@ -32,7 +35,7 @@ struct Cli {
     port: u16,
 
     /// SQLite 数据库存储路径
-    #[arg(long, env = "PROXY_DB_PATH", default_value = "tavily_proxy.db")]
+    #[arg(long, env = "PROXY_DB_PATH", default_value = "data/tavily_proxy.db")]
     db_path: String,
 
     /// Web 静态资源目录（指向打包后的前端 dist）
@@ -44,6 +47,15 @@ struct Cli {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv().ok();
     let cli = Cli::parse();
+
+    // Ensure parent directory for database exists when using nested path like data/tavily_proxy.db
+    let db_path = Path::new(&cli.db_path);
+    if let Some(parent) = db_path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent)?;
+    }
+    println!("Using database: {}", db_path.display());
 
     let proxy = TavilyProxy::with_endpoint(cli.keys, &cli.upstream, &cli.db_path).await?;
     let addr: SocketAddr = format!("{}:{}", cli.bind, cli.port).parse()?;
