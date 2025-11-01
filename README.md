@@ -21,9 +21,9 @@ cd tavily-hikari
 echo 'TAVILY_API_KEYS=key_a,key_b,key_c' >> .env
 # export TAVILY_API_KEYS="key_a,key_b,key_c"
 
-# 2. 启动反向代理
-cargo run -- --bind 127.0.0.1 --port 8080
-# 代理地址为 http://127.0.0.1:8080，与 Tavily MCP 的路径/方法保持一致
+# 2. 启动反向代理（开发期建议使用高位端口）
+cargo run -- --bind 127.0.0.1 --port 58087
+# 代理地址为 http://127.0.0.1:58087，与 Tavily MCP 的路径/方法保持一致
 ```
 
 > 默认的数据库文件为工作目录下的 `tavily_proxy.db`；首次运行会自动建表并初始化密钥列表与请求日志表。
@@ -35,7 +35,7 @@ cargo run -- --bind 127.0.0.1 --port 8080
 | `--keys` / `TAVILY_API_KEYS`      | Tavily API key，支持逗号分隔或多次传入，必填。                 |
 | `--upstream` / `TAVILY_UPSTREAM`  | 上游 Tavily MCP 端点，默认 `https://mcp.tavily.com/mcp`。      |
 | `--bind` / `PROXY_BIND`           | 监听地址，默认 `127.0.0.1`。                                   |
-| `--port` / `PROXY_PORT`           | 监听端口，默认 `8787`。                                        |
+| `--port` / `PROXY_PORT`           | 监听端口，默认 `8787`（开发期示例使用高位端口如 `58087`）。    |
 | `--db-path` / `PROXY_DB_PATH`     | SQLite 文件路径，默认 `tavily_proxy.db`。                      |
 | `--static-dir` / `WEB_STATIC_DIR` | Web 静态资源目录；若未显式指定且存在 `web/dist` 则会自动挂载。 |
 
@@ -56,15 +56,16 @@ cargo run -- --bind 127.0.0.1 --port 8080
 
 ## 开发
 
-- 需要 Rust 1.84+（2024 edition）。
+- 需要 Rust 1.91+（2024 edition，`rust-toolchain.toml` 固定为 1.91.0）。
 - 常用命令：
   - `cargo fmt`
   - `cargo check`
   - `cargo run -- --help`
 - Web 前端位于 `web/`：
   - `cd web && npm install`
-  - `npm run dev` 在本地调试（默认 http://localhost:5173 ）
+  - `npm run dev` 在本地调试（http://127.0.0.1:55173；已在 Vite 配置中固定高位端口并代理到后端）
   - `npm run build` 生成 `web/dist`，代理启动时可自动加载该 SPA
+  - 已配置 Vite 代理：`/api`、`/mcp`、`/health` → `http://127.0.0.1:58087`
 
 ## Git Hooks
 
