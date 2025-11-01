@@ -1,4 +1,10 @@
-use std::{net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{
+    fs,
+    io::Read,
+    net::SocketAddr,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use axum::http::header::{CONNECTION, CONTENT_LENGTH, TRANSFER_ENCODING};
 use axum::{
@@ -22,6 +28,7 @@ use tower_http::services::{ServeDir, ServeFile};
 #[derive(Clone)]
 struct AppState {
     proxy: TavilyProxy,
+    static_dir: Option<PathBuf>,
 }
 
 async fn health_check() -> &'static str {
@@ -40,6 +47,77 @@ async fn fetch_summary(
             eprintln!("summary error: {err}");
             StatusCode::INTERNAL_SERVER_ERROR
         })
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VersionView {
+    backend: String,
+    frontend: String,
+}
+
+async fn get_versions(State(state): State<Arc<AppState>>) -> Result<Json<VersionView>, StatusCode> {
+    let (backend, frontend) = detect_versions(state.static_dir.as_deref());
+    Ok(Json(VersionView { backend, frontend }))
+}
+
+fn detect_versions(static_dir: Option<&Path>) -> (String, String) {
+    let backend_base = option_env!("APP_EFFECTIVE_VERSION")
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
+    let backend = if cfg!(debug_assertions) {
+        format!("{}-dev", backend_base)
+    } else {
+        backend_base
+    };
+
+    // Try reading version.json produced by front-end build
+    let frontend_from_dist = static_dir.and_then(|dir| {
+        let path = dir.join("version.json");
+        fs::File::open(&path).ok().and_then(|mut f| {
+            let mut s = String::new();
+            if f.read_to_string(&mut s).is_ok() {
+                serde_json::from_str::<serde_json::Value>(&s)
+                    .ok()
+                    .and_then(|v| {
+                        v.get("version")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string())
+                    })
+            } else {
+                None
+            }
+        })
+    });
+
+    // Fallback to web/package.json for dev setups
+    let frontend = frontend_from_dist
+        .or_else(|| {
+            let path = Path::new("web").join("package.json");
+            fs::File::open(&path).ok().and_then(|mut f| {
+                let mut s = String::new();
+                if f.read_to_string(&mut s).is_ok() {
+                    serde_json::from_str::<serde_json::Value>(&s)
+                        .ok()
+                        .and_then(|v| {
+                            v.get("version")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string())
+                        })
+                } else {
+                    None
+                }
+            })
+        })
+        .unwrap_or_else(|| "unknown".to_string());
+
+    let frontend = if cfg!(debug_assertions) {
+        format!("{}-dev", frontend)
+    } else {
+        frontend
+    };
+
+    (backend, frontend)
 }
 
 async fn list_keys(
@@ -78,10 +156,14 @@ pub async fn serve(
     proxy: TavilyProxy,
     static_dir: Option<PathBuf>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let state = Arc::new(AppState { proxy });
+    let state = Arc::new(AppState {
+        proxy,
+        static_dir: static_dir.clone(),
+    });
 
     let mut router = Router::new()
         .route("/health", get(health_check))
+        .route("/api/version", get(get_versions))
         .route("/api/summary", get(fetch_summary))
         .route("/api/keys", get(list_keys))
         .route("/api/logs", get(list_logs));

@@ -40,6 +40,15 @@ async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T
   return (await response.json()) as T
 }
 
+export interface VersionInfo {
+  backend: string
+  frontend: string
+}
+
+export function fetchVersion(signal?: AbortSignal): Promise<VersionInfo> {
+  return requestJson('/api/version', { signal })
+}
+
 export function fetchSummary(signal?: AbortSignal): Promise<Summary> {
   return requestJson('/api/summary', { signal })
 }

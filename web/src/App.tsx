@@ -3,6 +3,7 @@ import {
   fetchApiKeys,
   fetchRequestLogs,
   fetchSummary,
+  fetchVersion,
   type ApiKeyStats,
   type RequestLog,
   type Summary,
@@ -80,14 +81,16 @@ function App(): JSX.Element {
   const [error, setError] = useState<string | null>(null)
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const [version, setVersion] = useState<{ backend: string; frontend: string } | null>(null)
 
   const loadData = useCallback(
     async (signal?: AbortSignal) => {
       try {
-        const [summaryData, keyData, logData] = await Promise.all([
+        const [summaryData, keyData, logData, ver] = await Promise.all([
           fetchSummary(signal),
           fetchApiKeys(signal),
           fetchRequestLogs(50, signal),
+          fetchVersion(signal).catch(() => null),
         ])
 
         if (signal?.aborted) {
@@ -97,6 +100,7 @@ function App(): JSX.Element {
         setSummary(summaryData)
         setKeys(keyData)
         setLogs(logData)
+        if (ver) setVersion(ver)
         setLastUpdated(new Date())
         setError(null)
       } catch (err) {
@@ -332,7 +336,12 @@ function App(): JSX.Element {
         </div>
       </section>
 
-      <div className="footer">Tavily Hikari Proxy Dashboard</div>
+      <div className="footer">
+        <span>Tavily Hikari Proxy Dashboard</span>
+        <span style={{ marginLeft: 12, opacity: 0.85 }}>
+          {version ? `· v${version.backend}` : '· Loading version…'}
+        </span>
+      </div>
     </main>
   )
 }
