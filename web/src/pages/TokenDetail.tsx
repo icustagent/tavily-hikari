@@ -191,6 +191,7 @@ export default function TokenDetail(): JSX.Element {
   const [summary, setSummary] = useState<TokenSummary | null>(null)
   const [period, setPeriod] = useState<Period>('month')
   const [sinceInput, setSinceInput] = useState<string>('')
+  const [debouncedSinceInput, setDebouncedSinceInput] = useState<string>('')
   const [logs, setLogs] = useState<TokenLog[]>([])
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(20)
@@ -202,12 +203,13 @@ export default function TokenDetail(): JSX.Element {
   const sseRef = useRef<EventSource | null>(null)
   const [expandedLogs, setExpandedLogs] = useState<Set<number>>(() => new Set())
   const warningTimerRef = useRef<number | null>(null)
+  const sinceDebounceRef = useRef<number | null>(null)
 
   const { sinceIso, untilIso } = useMemo(() => {
-    const start = computeStartDate(period, sinceInput)
+    const start = computeStartDate(period, debouncedSinceInput)
     const end = computeEndDate(period, start)
     return { sinceIso: toIso(start), untilIso: toIso(end) }
-  }, [period, sinceInput])
+  }, [period, debouncedSinceInput])
 
   const periodSelectId = `token-period-select-${id}`
   const sinceInputId = `token-since-input-${id}`
@@ -227,6 +229,23 @@ export default function TokenDetail(): JSX.Element {
     applyStartInput(sinceInput, period, { suppressWarning: sinceInput.trim() === '' })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period])
+
+  useEffect(() => {
+    if (sinceDebounceRef.current != null) {
+      window.clearTimeout(sinceDebounceRef.current)
+      sinceDebounceRef.current = null
+    }
+    sinceDebounceRef.current = window.setTimeout(() => {
+      setDebouncedSinceInput(sinceInput)
+      sinceDebounceRef.current = null
+    }, 500)
+    return () => {
+      if (sinceDebounceRef.current != null) {
+        window.clearTimeout(sinceDebounceRef.current)
+        sinceDebounceRef.current = null
+      }
+    }
+  }, [sinceInput])
 
   useEffect(() => {
     if (!warning) {
