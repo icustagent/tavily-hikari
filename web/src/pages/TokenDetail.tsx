@@ -379,53 +379,53 @@ export default function TokenDetail(): JSX.Element {
             <h2>Usage Snapshot</h2>
             <p className="panel-description">Aggregated metrics for the selected window.</p>
           </div>
-        </div>
-        <div className="token-period-controls" role="group" aria-label="Period filter">
-          <div className="token-period-control">
-            <label htmlFor={periodSelectId}>Period</label>
-            <select
-              id={periodSelectId}
-              className="input"
-              value={period}
-              onChange={(e) => { const next = e.target.value as Period; setPeriod(next); applyStartInput('', next) }}
-            >
-              <option value="day">Day</option>
-              <option value="week">Week</option>
-              <option value="month">Month</option>
-            </select>
-          </div>
-          <div className="token-period-control">
-            <label htmlFor={sinceInputId}>Start</label>
-            {period === 'day' && (
-              <input
-                id={sinceInputId}
-                type="date"
+          <div className="token-period-controls" role="group" aria-label="Period filter">
+            <div className="token-period-control">
+              <label htmlFor={periodSelectId}>Period</label>
+              <select
+                id={periodSelectId}
                 className="input"
-                max={defaultInputValue('day')}
-                value={sinceInput}
-                onChange={(e) => handleStartChange(period, e.target.value)}
-              />
-            )}
-            {period === 'week' && (
-              <input
-                id={sinceInputId}
-                type="week"
-                className="input"
-                max={defaultInputValue('week')}
-                value={sinceInput}
-                onChange={(e) => handleStartChange(period, e.target.value)}
-              />
-            )}
-            {period === 'month' && (
-              <input
-                id={sinceInputId}
-                type="month"
-                className="input"
-                max={defaultInputValue('month')}
-                value={sinceInput}
-                onChange={(e) => handleStartChange(period, e.target.value)}
-              />
-            )}
+                value={period}
+                onChange={(e) => { const next = e.target.value as Period; setPeriod(next); applyStartInput('', next) }}
+              >
+                <option value="day">Day</option>
+                <option value="week">Week</option>
+                <option value="month">Month</option>
+              </select>
+            </div>
+            <div className="token-period-control">
+              <label htmlFor={sinceInputId}>Start</label>
+              {period === 'day' && (
+                <input
+                  id={sinceInputId}
+                  type="date"
+                  className="input"
+                  max={defaultInputValue('day')}
+                  value={sinceInput}
+                  onChange={(e) => handleStartChange(period, e.target.value)}
+                />
+              )}
+              {period === 'week' && (
+                <input
+                  id={sinceInputId}
+                  type="week"
+                  className="input"
+                  max={defaultInputValue('week')}
+                  value={sinceInput}
+                  onChange={(e) => handleStartChange(period, e.target.value)}
+                />
+              )}
+              {period === 'month' && (
+                <input
+                  id={sinceInputId}
+                  type="month"
+                  className="input"
+                  max={defaultInputValue('month')}
+                  value={sinceInput}
+                  onChange={(e) => handleStartChange(period, e.target.value)}
+                />
+              )}
+            </div>
           </div>
         </div>
         {warning && (
