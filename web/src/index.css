@@ -115,24 +115,63 @@ button {
   gap: 16px;
 }
 
-.guide-steps {
-  list-style: decimal inside;
+.guide-tabs {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.guide-tab {
+  padding: 8px 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  background: rgba(255, 255, 255, 0.9);
+  color: #4c51bf;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.guide-tab.active {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  box-shadow: 0 8px 20px rgba(99, 102, 241, 0.25);
+}
+
+.guide-tab:hover {
+  transform: translateY(-1px);
+}
+
+.guide-panel {
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.05);
+  background: rgba(255, 255, 255, 0.92);
+  padding: 20px;
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.guide-panel h3 {
   margin: 0;
-  padding: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
   color: #1f2937;
 }
 
-.guide-steps strong {
-  color: #111827;
+.guide-panel ol {
+  margin: 0;
+  padding-left: 16px;
+  color: #334155;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-.guide-note {
-  margin: 0;
-  font-size: 0.95rem;
-  color: #475569;
+.guide-panel code {
+  background: rgba(15, 23, 42, 0.08);
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-family: 'SF Mono', 'Fira Mono', Consolas, 'Courier New', monospace;
 }
 
 .public-home-metrics {

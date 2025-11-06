@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { fetchPublicMetrics, fetchProfile, type Profile, type PublicMetrics } from './api'
 
 const numberFormatter = new Intl.NumberFormat('en-US', {
@@ -10,17 +10,21 @@ function formatNumber(value: number): string {
 }
 
 function PublicHome(): JSX.Element {
-  const [token, setToken] = useState('')
+  const DEFAULT_TOKEN = 'th-demo-1234567890'
+  const [token, setToken] = useState(DEFAULT_TOKEN)
   const [tokenVisible, setTokenVisible] = useState(false)
   const [metrics, setMetrics] = useState<PublicMetrics | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
+  const [activeGuide, setActiveGuide] = useState<'codex' | 'claude' | 'other'>('codex')
 
   useEffect(() => {
     const hash = window.location.hash.slice(1)
     if (hash) {
       setToken(decodeURIComponent(hash))
+    } else {
+      window.location.hash = encodeURIComponent(DEFAULT_TOKEN)
     }
 
     const controller = new AbortController()
@@ -53,6 +57,42 @@ function PublicHome(): JSX.Element {
   }, [])
 
   const isAdmin = profile?.isAdmin ?? false
+
+  const guideDescription = useMemo(() => {
+    const baseUrl = window.location.origin
+    switch (activeGuide) {
+      case 'codex':
+        return {
+          title: 'Codex CLI',
+          steps: [
+            '编辑配置文件 `~/.codex/credentials`（或当前 profile 的 `mcp_headers`）',
+            `在 headers 中加入 \`Authorization: Bearer ${token || DEFAULT_TOKEN}\``,
+            `将自定义 MCP upstream 指向 \`${baseUrl}/mcp\``,
+            '重新运行 Codex CLI，即可通过 Tavily Hikari 完成搜索请求。',
+          ],
+        }
+      case 'claude':
+        return {
+          title: 'Claude Code',
+          steps: [
+            '打开设置 → Custom MCP Servers → Add Endpoint',
+            `URL 填写 \`${baseUrl}/mcp\``,
+            `在 HTTP Headers 增加 \`Authorization: Bearer ${token || DEFAULT_TOKEN}\``,
+            '保存后在 Claude Code 侧边栏启用该 MCP，即可使用 Tavily 功能。',
+          ],
+        }
+      default:
+        return {
+          title: '其他 MCP 客户端',
+          steps: [
+            `确保请求地址指向 \`${baseUrl}/mcp\``,
+            `向请求添加 Authorization Header：\`Bearer ${token || DEFAULT_TOKEN}\``,
+            '开启 TLS/代理策略时保持对 WebSocket/HTTP 的放行',
+            '遇到认证失败，请联系管理员更新 Access Token。',
+          ],
+        }
+    }
+  }, [activeGuide, token])
 
   return (
     <main className="app-shell public-home">
@@ -117,24 +157,42 @@ function PublicHome(): JSX.Element {
         </div>
       </section>
       <section className="surface panel public-home-guide">
-        <h2>如何在常见客户端中使用 Tavily Hikari</h2>
-        <ol className="guide-steps">
-          <li>
-            <strong>准备 Access Token：</strong> 在上方输入框粘贴管理员发放的 <code>th-xxxx-xxxxxxxxxxxx</code> 令牌，或直接访问带有 <code>#token</code> 的链接，页面会自动填充。
-          </li>
-          <li>
-            <strong>Codex CLI：</strong> 将 <code>{window.location.origin}/mcp</code> 配置为自定义 MCP upstream，把 Access Token 写入 <code>~/.codex/credentials</code> 或对应 profile 的 <code>mcp_headers</code> 中，例如 <code>Authorization: Bearer th-xxxx-xxxxxxxxxxxx</code>。
-          </li>
-          <li>
-            <strong>Claude Code：</strong> 在“自定义 MCP 服务器”面板里新增 Endpoint，URL 设置为 <code>{window.location.origin}/mcp</code>，并在 HTTP Headers 中添加 <code>Authorization: Bearer th-xxxx-xxxxxxxxxxxx</code>。保存后即可在 Claude Code 里使用 Tavily 搜索能力。
-          </li>
-          <li>
-            <strong>其他 MCP 客户端：</strong> 只需将 upstream 指向 <code>{window.location.origin}/mcp</code> 并附带相同的 Bearer Token。所有请求会在此代理层记录，方便管理员在 `/admin` 后台追踪。
-          </li>
-        </ol>
-        <p className="guide-note">
-          如果令牌遗失，只要在网址后加上 <code>#token</code> 即可快速恢复，例如 <code>{window.location.origin}/#th-demo-1234567890</code>。需要新令牌或重置，请联系管理员。
-        </p>
+        <h2>如何在常见 MCP 客户端中接入 Tavily Hikari</h2>
+        <div className="guide-tabs">
+          <button
+            type="button"
+            className={`guide-tab${activeGuide === 'codex' ? ' active' : ''}`}
+            onClick={() => setActiveGuide('codex')}
+          >
+            Codex CLI
+          </button>
+          <button
+            type="button"
+            className={`guide-tab${activeGuide === 'claude' ? ' active' : ''}`}
+            onClick={() => setActiveGuide('claude')}
+          >
+            Claude Code
+          </button>
+          <button
+            type="button"
+            className={`guide-tab${activeGuide === 'other' ? ' active' : ''}`}
+            onClick={() => setActiveGuide('other')}
+          >
+            其他 MCP 客户端
+          </button>
+        </div>
+        <div className="guide-panel">
+          <h3>{guideDescription.title}</h3>
+          <ol>
+            {guideDescription.steps.map((step, index) => (
+              <li key={index}>{step}</li>
+            ))}
+          </ol>
+          <p className="guide-note">
+            想快速分享访问？复制当前链接，我们会把 Access Token 放在 URL Hash 中，例如{' '}
+            <code>{window.location.origin}/#{token || DEFAULT_TOKEN}</code>。
+          </p>
+        </div>
       </section>
     </main>
   )
