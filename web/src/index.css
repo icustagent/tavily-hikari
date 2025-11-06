@@ -40,6 +40,51 @@ button {
   gap: 24px;
 }
 
+.public-home {
+  align-items: stretch;
+}
+
+.public-home-hero {
+  text-align: center;
+  padding: 48px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.public-home-hero h1 {
+  margin: 0;
+  font-size: 2.4rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #111827;
+}
+
+.public-home-tagline {
+  margin: 0;
+  color: #4b5563;
+  font-size: 1.05rem;
+}
+
+.public-home-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.public-home-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.public-home-metrics-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .surface {
   background: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(10px);

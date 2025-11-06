@@ -146,7 +146,7 @@ function formatErrorMessage(log: RequestLog): string {
   return '—'
 }
 
-function App(): JSX.Element {
+function AdminDashboard(): JSX.Element {
   const [route, setRoute] = useState<{ name: 'home' } | { name: 'key'; id: string }>(() => {
     const id = parseHashForKeyId()
     return id ? { name: 'key', id } : { name: 'home' }
@@ -180,6 +180,7 @@ function App(): JSX.Element {
   const [editingTokenNote, setEditingTokenNote] = useState('')
   const [savingTokenNote, setSavingTokenNote] = useState(false)
   const [sseConnected, setSseConnected] = useState(false)
+  const isAdmin = profile?.isAdmin ?? false
 
   const copyStateKey = useCallback((scope: 'keys' | 'logs' | 'tokens', identifier: string | number) => {
     return `${scope}:${identifier}`
@@ -254,12 +255,13 @@ function App(): JSX.Element {
           return
         }
 
+        setProfile(profileData ?? null)
         setSummary(summaryData)
         setKeys(keyData)
         setLogs(logData)
         setTokens(tokenData)
         setExpandedLogs((previous) => {
-          if (!isAdmin || previous.size === 0) {
+          if (previous.size === 0) {
             return new Set()
           }
           const validIds = new Set(logData.map((item) => item.id))
@@ -271,8 +273,7 @@ function App(): JSX.Element {
           }
           return next
         })
-        if (ver) setVersion(ver)
-        setProfile(profileData ?? null)
+        setVersion(ver ?? null)
         setLastUpdated(new Date())
         setError(null)
       } catch (err) {
@@ -305,12 +306,14 @@ function App(): JSX.Element {
       }
       return
     }
+
     if (pollingTimerRef.current == null) {
       pollingTimerRef.current = window.setInterval(() => {
         const controller = new AbortController()
         void loadData(controller.signal).finally(() => controller.abort())
       }, REFRESH_INTERVAL_MS) as unknown as number
     }
+
     return () => {
       if (pollingTimerRef.current != null) {
         window.clearInterval(pollingTimerRef.current)
@@ -322,7 +325,6 @@ function App(): JSX.Element {
   // Establish SSE connection to receive live dashboard updates
   useEffect(() => {
     let es: EventSource | null = null
-    let closed = false
 
     const connect = () => {
       if (es) {
@@ -359,10 +361,10 @@ function App(): JSX.Element {
 
     connect()
     return () => {
-      closed = true
       if (es) {
         try { es.close() } catch {}
       }
+      setSseConnected(false)
     }
   }, [])
 
@@ -376,17 +378,16 @@ function App(): JSX.Element {
   }, [])
 
   const navigateHome = () => {
-    history.pushState(null, '', '/')
+    if (window.location.pathname !== '/admin') {
+      window.history.pushState(null, '', '/admin')
+    }
+    location.hash = ''
     setRoute({ name: 'home' })
   }
 
   const navigateKey = (id: string) => {
     location.hash = `#/keys/${encodeURIComponent(id)}`
     setRoute({ name: 'key', id })
-  }
-
-  if (route.name === 'key') {
-    return <KeyDetails id={route.id} onBack={navigateHome} isAdmin={profile?.isAdmin ?? false} />
   }
 
   const handleManualRefresh = () => {
@@ -456,17 +457,9 @@ function App(): JSX.Element {
   }, [dedupedKeys])
 
   const displayName = profile?.displayName ?? null
-  const isAdmin = profile?.isAdmin ?? false
-
-  useEffect(() => {
-    if (!isAdmin && expandedLogs.size > 0) {
-      setExpandedLogs(new Set())
-    }
-  }, [isAdmin, expandedLogs])
 
   const toggleLogExpansion = useCallback(
     (id: number) => {
-      if (!isAdmin) return
       setExpandedLogs((previous) => {
         const next = new Set(previous)
         if (next.has(id)) {
@@ -477,7 +470,7 @@ function App(): JSX.Element {
         return next
       })
     },
-    [isAdmin],
+    [],
   )
 
   const handleAddKey = async () => {
@@ -677,6 +670,10 @@ function App(): JSX.Element {
   const cancelDisable = () => {
     disableDialogRef.current?.close()
     setPendingDisableId(null)
+  }
+
+  if (route.name === 'key') {
+    return <KeyDetails id={route.id} onBack={navigateHome} />
   }
 
   return (
@@ -1023,7 +1020,6 @@ function App(): JSX.Element {
                     <LogRow
                       key={log.id}
                       log={log}
-                      isAdmin={isAdmin}
                       onCopy={() => void handleCopySecret(log.key_id, stateKey)}
                       copyState={state}
                       expanded={expandedLogs.has(log.id)}
@@ -1141,20 +1137,17 @@ function App(): JSX.Element {
   )
 }
 
-export default App
-
 type CopyStateValue = 'loading' | 'copied' | undefined
 
 interface LogRowProps {
   log: RequestLog
-  isAdmin: boolean
   copyState: CopyStateValue
   onCopy: () => void
   expanded: boolean
   onToggle: (id: number) => void
 }
 
-function LogRow({ log, isAdmin, copyState, onCopy, expanded, onToggle }: LogRowProps): JSX.Element {
+function LogRow({ log, copyState, onCopy, expanded, onToggle }: LogRowProps): JSX.Element {
   const copyButtonClass = `icon-button${copyState === 'copied' ? ' icon-button-success' : ''}${copyState === 'loading' ? ' icon-button-loading' : ''}`
   const requestButtonLabel = expanded ? 'Hide request details' : 'Show request details'
 
@@ -1165,43 +1158,37 @@ function LogRow({ log, isAdmin, copyState, onCopy, expanded, onToggle }: LogRowP
         <td>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <code>{log.key_id}</code>
-            {isAdmin && (
-              <button
-                type="button"
-                className={copyButtonClass}
-                title="复制原始 API key"
-                aria-label="复制原始 API key"
-                onClick={onCopy}
-                disabled={copyState === 'loading'}
-              >
-                <Icon icon={copyState === 'copied' ? 'mdi:check' : 'mdi:content-copy'} width={18} height={18} />
-              </button>
-            )}
+            <button
+              type="button"
+              className={copyButtonClass}
+              title="复制原始 API key"
+              aria-label="复制原始 API key"
+              onClick={onCopy}
+              disabled={copyState === 'loading'}
+            >
+              <Icon icon={copyState === 'copied' ? 'mdi:check' : 'mdi:content-copy'} width={18} height={18} />
+            </button>
           </div>
         </td>
         <td>{log.http_status ?? '—'}</td>
         <td>{log.mcp_status ?? '—'}</td>
         <td>
-          {isAdmin ? (
-            <button
-              type="button"
-              className={`log-result-button${expanded ? ' log-result-button-active' : ''}`}
-              onClick={() => onToggle(log.id)}
-              aria-expanded={expanded}
-              aria-controls={`log-details-${log.id}`}
-              aria-label={requestButtonLabel}
-              title={requestButtonLabel}
-            >
-              <span className={statusClass(log.result_status)}>{statusLabel(log.result_status)}</span>
-              <Icon icon={expanded ? 'mdi:chevron-up' : 'mdi:chevron-down'} width={18} height={18} className="log-result-icon" />
-            </button>
-          ) : (
+          <button
+            type="button"
+            className={`log-result-button${expanded ? ' log-result-button-active' : ''}`}
+            onClick={() => onToggle(log.id)}
+            aria-expanded={expanded}
+            aria-controls={`log-details-${log.id}`}
+            aria-label={requestButtonLabel}
+            title={requestButtonLabel}
+          >
             <span className={statusClass(log.result_status)}>{statusLabel(log.result_status)}</span>
-          )}
+            <Icon icon={expanded ? 'mdi:chevron-up' : 'mdi:chevron-down'} width={18} height={18} className="log-result-icon" />
+          </button>
         </td>
         <td>{formatErrorMessage(log)}</td>
       </tr>
-      {isAdmin && expanded && (
+      {expanded && (
         <tr className="log-details-row">
           <td colSpan={6} id={`log-details-${log.id}`}>
             <LogDetails log={log} />
@@ -1275,7 +1262,7 @@ function LogDetails({ log }: { log: RequestLog }): JSX.Element {
   )
 }
 
-function KeyDetails({ id, onBack, isAdmin }: { id: string; onBack: () => void; isAdmin: boolean }): JSX.Element {
+function KeyDetails({ id, onBack }: { id: string; onBack: () => void }): JSX.Element {
   const [period, setPeriod] = useState<'day' | 'week' | 'month'>('month')
   const [startDate, setStartDate] = useState<string>(() => new Date().toISOString().slice(0, 10))
   const [summary, setSummary] = useState<KeySummary | null>(null)
@@ -1417,3 +1404,5 @@ function KeyDetails({ id, onBack, isAdmin }: { id: string; onBack: () => void; i
     </main>
   )
 }
+
+export default AdminDashboard

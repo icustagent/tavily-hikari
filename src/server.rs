@@ -154,11 +154,14 @@ async fn health_check() -> &'static str {
 
 // kept for potential future direct serving; currently ServeDir handles '/'
 #[allow(dead_code)]
-async fn serve_index(State(state): State<Arc<AppState>>) -> Result<Response<Body>, StatusCode> {
+async fn load_spa_response(
+    state: &AppState,
+    file_name: &str,
+) -> Result<Response<Body>, StatusCode> {
     let Some(dir) = state.static_dir.as_ref() else {
         return Err(StatusCode::NOT_FOUND);
     };
-    let path = dir.join("index.html");
+    let path = dir.join(file_name);
     let Ok(bytes) = tokio::fs::read(path).await else {
         return Err(StatusCode::NOT_FOUND);
     };
@@ -167,6 +170,21 @@ async fn serve_index(State(state): State<Arc<AppState>>) -> Result<Response<Body
         .header(CONTENT_TYPE, "text/html; charset=utf-8")
         .body(Body::from(bytes))
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn serve_index(State(state): State<Arc<AppState>>) -> Result<Response<Body>, StatusCode> {
+    load_spa_response(state.as_ref(), "index.html").await
+}
+
+async fn serve_admin_index(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Response<Body>, StatusCode> {
+    if !state.dev_open_admin && !state.forward_auth.is_request_admin(&headers) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    load_spa_response(state.as_ref(), "admin.html").await
 }
 
 const BASE_404_STYLES: &str = r#"
@@ -399,6 +417,25 @@ async fn fetch_summary(
         })
 }
 
+async fn get_public_metrics(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<PublicMetricsView>, StatusCode> {
+    state
+        .proxy
+        .success_breakdown()
+        .await
+        .map(|metrics| {
+            Json(PublicMetricsView {
+                monthly_success: metrics.monthly_success,
+                daily_success: metrics.daily_success,
+            })
+        })
+        .map_err(|err| {
+            eprintln!("public metrics error: {err}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct DashboardSnapshot {
@@ -409,8 +446,11 @@ struct DashboardSnapshot {
 
 async fn sse_dashboard(
     State(state): State<Arc<AppState>>,
-    _headers: HeaderMap,
-) -> Sse<impl Stream<Item = Result<Event, axum::http::Error>>> {
+    headers: HeaderMap,
+) -> Result<Sse<impl Stream<Item = Result<Event, axum::http::Error>>>, StatusCode> {
+    if !state.dev_open_admin && !state.forward_auth.is_request_admin(&headers) {
+        return Err(StatusCode::FORBIDDEN);
+    }
     let state = state.clone();
 
     let stream = stream! {
@@ -454,7 +494,7 @@ async fn sse_dashboard(
         }
     };
 
-    Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)).text(""))
+    Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)).text("")))
 }
 
 async fn build_snapshot_event(state: &Arc<AppState>) -> Option<Event> {
@@ -571,6 +611,13 @@ async fn get_profile(
         }));
     }
 
+    if state.dev_open_admin {
+        return Ok(Json(ProfileView {
+            display_name: Some("dev-mode".to_string()),
+            is_admin: true,
+        }));
+    }
+
     if !config.is_enabled() {
         return Ok(Json(ProfileView {
             display_name: None,
@@ -660,7 +707,11 @@ fn detect_versions(static_dir: Option<&FsPath>) -> (String, String) {
 
 async fn list_keys(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
 ) -> Result<Json<Vec<ApiKeyView>>, StatusCode> {
+    if !state.dev_open_admin && !state.forward_auth.is_request_admin(&headers) {
+        return Err(StatusCode::FORBIDDEN);
+    }
     state
         .proxy
         .list_api_key_metrics()
@@ -779,8 +830,12 @@ async fn get_api_key_secret(
 
 async fn list_logs(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Query(params): Query<LogsQuery>,
 ) -> Result<Json<Vec<RequestLogView>>, StatusCode> {
+    if !state.dev_open_admin && !state.forward_auth.is_request_admin(&headers) {
+        return Err(StatusCode::FORBIDDEN);
+    }
     let limit = params.limit.unwrap_or(DEFAULT_LOG_LIMIT).clamp(1, 500);
 
     state
@@ -967,6 +1022,7 @@ pub async fn serve(
         .route("/api/version", get(get_versions))
         .route("/api/profile", get(get_profile))
         .route("/api/summary", get(fetch_summary))
+        .route("/api/public/metrics", get(get_public_metrics))
         .route("/api/keys", get(list_keys))
         .route("/api/keys", post(create_api_key))
         .route("/api/keys/:id/secret", get(get_api_key_secret))
@@ -990,6 +1046,8 @@ pub async fn serve(
             if index_file.exists() {
                 router = router.nest_service("/assets", ServeDir::new(dir.join("assets")));
                 router = router.route("/", get(serve_index));
+                router = router.route("/admin", get(serve_admin_index));
+                router = router.route("/admin/", get(serve_admin_index));
                 router =
                     router.route_service("/favicon.svg", ServeFile::new(dir.join("favicon.svg")));
             } else {
@@ -1111,6 +1169,13 @@ struct SummaryView {
     last_activity: Option<i64>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PublicMetricsView {
+    monthly_success: i64,
+    daily_success: i64,
+}
+
 // ---- Access Token views ----
 #[derive(Debug, Serialize)]
 struct AuthTokenView {
@@ -1158,9 +1223,13 @@ struct KeyMetricsQuery {
 
 async fn get_key_metrics(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(id): Path<String>,
     Query(q): Query<KeyMetricsQuery>,
 ) -> Result<Json<SummaryView>, StatusCode> {
+    if !state.dev_open_admin && !state.forward_auth.is_request_admin(&headers) {
+        return Err(StatusCode::FORBIDDEN);
+    }
     let since = if let Some(since) = q.since {
         since
     } else {
@@ -1204,9 +1273,13 @@ struct KeyLogsQuery {
 
 async fn get_key_logs(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(id): Path<String>,
     Query(q): Query<KeyLogsQuery>,
 ) -> Result<Json<Vec<RequestLogView>>, StatusCode> {
+    if !state.dev_open_admin && !state.forward_auth.is_request_admin(&headers) {
+        return Err(StatusCode::FORBIDDEN);
+    }
     let limit = q.limit.unwrap_or(DEFAULT_LOG_LIMIT).clamp(1, 500);
     state
         .proxy

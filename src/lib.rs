@@ -352,6 +352,16 @@ impl TavilyProxy {
         self.key_store.fetch_summary().await
     }
 
+    /// Public metrics: successful requests today and this month.
+    pub async fn success_breakdown(&self) -> Result<SuccessBreakdown, ProxyError> {
+        let now = Utc::now();
+        let month_start = start_of_month(now).timestamp();
+        let day_start = start_of_day(now).timestamp();
+        self.key_store
+            .fetch_success_breakdown(month_start, day_start)
+            .await
+    }
+
     fn sanitize_headers(&self, headers: &HeaderMap) -> SanitizedHeaders {
         sanitize_headers_inner(headers, &self.upstream, &self.upstream_origin)
     }
@@ -1659,6 +1669,32 @@ impl KeyStore {
             last_activity,
         })
     }
+
+    async fn fetch_success_breakdown(
+        &self,
+        month_since: i64,
+        day_since: i64,
+    ) -> Result<SuccessBreakdown, ProxyError> {
+        let row = sqlx::query(
+            r#"
+            SELECT
+              COALESCE(SUM(CASE WHEN result_status = ? AND created_at >= ? THEN 1 ELSE 0 END), 0) AS monthly_success,
+              COALESCE(SUM(CASE WHEN result_status = ? AND created_at >= ? THEN 1 ELSE 0 END), 0) AS daily_success
+            FROM request_logs
+            "#,
+        )
+        .bind(OUTCOME_SUCCESS)
+        .bind(month_since)
+        .bind(OUTCOME_SUCCESS)
+        .bind(day_since)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(SuccessBreakdown {
+            monthly_success: row.try_get("monthly_success")?,
+            daily_success: row.try_get("daily_success")?,
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -1745,6 +1781,13 @@ pub struct ProxySummary {
     pub last_activity: Option<i64>,
 }
 
+/// Successful request counters for public metrics.
+#[derive(Debug, Clone)]
+pub struct SuccessBreakdown {
+    pub monthly_success: i64,
+    pub daily_success: i64,
+}
+
 fn random_string(alphabet: &[u8], len: usize) -> String {
     let mut s = String::with_capacity(len);
     let mut rng = rand::thread_rng();
@@ -1795,6 +1838,13 @@ fn start_of_month(now: chrono::DateTime<Utc>) -> chrono::DateTime<Utc> {
     Utc.with_ymd_and_hms(now.year(), now.month(), 1, 0, 0, 0)
         .single()
         .expect("valid start of month")
+}
+
+fn start_of_day(now: chrono::DateTime<Utc>) -> chrono::DateTime<Utc> {
+    now.date_naive()
+        .and_hms_opt(0, 0, 0)
+        .expect("valid start of day")
+        .and_utc()
 }
 
 fn normalize_timestamp(timestamp: i64) -> Option<i64> {

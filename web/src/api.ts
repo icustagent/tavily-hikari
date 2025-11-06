@@ -8,6 +8,11 @@ export interface Summary {
   last_activity: number | null
 }
 
+export interface PublicMetrics {
+  monthlySuccess: number
+  dailySuccess: number
+}
+
 export interface ApiKeyStats {
   id: string
   status: string
@@ -75,6 +80,10 @@ export function fetchVersion(signal?: AbortSignal): Promise<VersionInfo> {
 
 export function fetchSummary(signal?: AbortSignal): Promise<Summary> {
   return requestJson('/api/summary', { signal })
+}
+
+export function fetchPublicMetrics(signal?: AbortSignal): Promise<PublicMetrics> {
+  return requestJson('/api/public/metrics', { signal })
 }
 
 export function fetchApiKeys(signal?: AbortSignal): Promise<ApiKeyStats[]> {
