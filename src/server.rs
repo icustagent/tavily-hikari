@@ -176,7 +176,7 @@ async fn serve_index(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Result<Response<Body>, StatusCode> {
-    if state.dev_open_admin || state.forward_auth.is_request_admin(&headers) {
+    if state.forward_auth.is_request_admin(&headers) {
         return Ok(Redirect::temporary("/admin").into_response());
     }
 
