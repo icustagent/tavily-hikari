@@ -1,5 +1,12 @@
 import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
-import { fetchPublicMetrics, fetchProfile, type Profile, type PublicMetrics } from './api'
+import {
+  fetchPublicMetrics,
+  fetchProfile,
+  fetchSummary,
+  type Profile,
+  type PublicMetrics,
+  type Summary,
+} from './api'
 import useUpdateAvailable from './hooks/useUpdateAvailable'
 
 type GuideLanguage = 'toml' | 'json' | 'bash'
@@ -51,6 +58,7 @@ function PublicHome(): JSX.Element {
   const [token, setToken] = useState(DEFAULT_TOKEN)
   const [tokenVisible, setTokenVisible] = useState(false)
   const [metrics, setMetrics] = useState<PublicMetrics | null>(null)
+  const [summary, setSummary] = useState<Summary | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -71,8 +79,9 @@ function PublicHome(): JSX.Element {
     Promise.allSettled([
       fetchPublicMetrics(controller.signal),
       fetchProfile(controller.signal),
+      fetchSummary(controller.signal),
     ])
-      .then(([metricsResult, profileResult]) => {
+      .then(([metricsResult, profileResult, summaryResult]) => {
         if (metricsResult.status === 'fulfilled') {
           setMetrics(metricsResult.value)
           setError(null)
@@ -86,16 +95,28 @@ function PublicHome(): JSX.Element {
         if (profileResult.status === 'fulfilled') {
           setProfile(profileResult.value)
         }
+
+        if (summaryResult.status === 'fulfilled') {
+          setSummary(summaryResult.value)
+        } else {
+          const reason = summaryResult.reason as Error
+          if (reason?.name !== 'AbortError') {
+            setError((prev) => prev ?? (reason instanceof Error ? reason.message : 'Unable to load summary data'))
+          }
+        }
       })
       .finally(() => {
         if (!controller.signal.aborted) {
           setLoading(false)
         }
       })
-    return () => controller.abort()
+  return () => controller.abort()
   }, [])
 
   const isAdmin = profile?.isAdmin ?? false
+  const availableKeys = summary?.active_keys ?? null
+  const exhaustedKeys = summary?.exhausted_keys ?? null
+  const totalKeys = availableKeys != null && exhaustedKeys != null ? availableKeys + exhaustedKeys : null
 
   const guideDescription = useMemo<GuideContent>(() => {
     const baseUrl = window.location.origin
@@ -382,16 +403,23 @@ function PublicHome(): JSX.Element {
         {error && <div className="surface error-banner" role="status">{error}</div>}
         <div className="metrics-grid">
           <div className="metric-card">
-            <h3>This Month</h3>
+            <h3>本月成功请求（UTC）</h3>
             <div className="metric-value">
               {loading ? '—' : formatNumber(metrics?.monthlySuccess ?? 0)}
             </div>
-            <div className="metric-subtitle">Completed since the start of the month</div>
+            <div className="metric-subtitle">Tavily 月额度按 UTC 月初自动重置</div>
           </div>
           <div className="metric-card">
-            <h3>Today</h3>
+            <h3>今日（服务器时区）</h3>
             <div className="metric-value">{loading ? '—' : formatNumber(metrics?.dailySuccess ?? 0)}</div>
-            <div className="metric-subtitle">Completed since midnight (UTC)</div>
+            <div className="metric-subtitle">从服务器午夜起累计的成功请求</div>
+          </div>
+          <div className="metric-card">
+            <h3>号池可用数</h3>
+            <div className="metric-value">
+              {loading ? '—' : availableKeys != null && totalKeys != null ? `${availableKeys}/${totalKeys}` : '—'}
+            </div>
+            <div className="metric-subtitle">活跃 Tavily API Key / 总密钥（含本月耗尽）</div>
           </div>
         </div>
       </section>
