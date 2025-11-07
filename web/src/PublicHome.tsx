@@ -141,6 +141,37 @@ function PublicHome(): JSX.Element {
   return () => controller.abort()
   }, [])
 
+  // Realtime metrics via public SSE
+  useEffect(() => {
+    // build URL with optional token
+    const params = new URLSearchParams()
+    if (token && isFullToken(token)) params.set('token', token)
+    const url = `/api/public/events${params.toString() ? `?${params.toString()}` : ''}`
+    const es = new EventSource(url)
+    const onMetrics = (ev: MessageEvent) => {
+      try {
+        const data = JSON.parse(ev.data)
+        if (data?.public) {
+          setMetrics({ monthlySuccess: data.public.monthlySuccess, dailySuccess: data.public.dailySuccess })
+        }
+        if (data?.token) {
+          setTokenMetrics({
+            monthlySuccess: data.token.monthlySuccess,
+            dailySuccess: data.token.dailySuccess,
+            dailyFailure: data.token.dailyFailure,
+          })
+        }
+      } catch {
+        // ignore parse errors
+      }
+    }
+    es.addEventListener('metrics', onMetrics as unknown as EventListener)
+    return () => {
+      es.removeEventListener('metrics', onMetrics as unknown as EventListener)
+      es.close()
+    }
+  }, [token])
+
   const isAdmin = profile?.isAdmin ?? false
   const availableKeys = summary?.active_keys ?? null
   const exhaustedKeys = summary?.exhausted_keys ?? null

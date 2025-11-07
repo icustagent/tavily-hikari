@@ -551,6 +551,67 @@ async fn sse_dashboard(
     Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)).text("")))
 }
 
+#[derive(Deserialize)]
+struct PublicEventsQuery {
+    token: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PublicMetricsPayload {
+    public: PublicMetricsView,
+    token: Option<TokenMetricsView>,
+}
+
+async fn sse_public(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<PublicEventsQuery>,
+) -> Result<Sse<impl Stream<Item = Result<Event, axum::http::Error>>>, StatusCode> {
+    let state = state.clone();
+    let token_param = q.token.clone();
+
+    let stream = stream! {
+        type PublicSig = (i64, i64, Option<(i64, i64, i64)>);
+        async fn compute(state: &Arc<AppState>, token_param: &Option<String>) -> Option<(PublicMetricsPayload, PublicSig)> {
+            let m = state.proxy.success_breakdown().await.ok()?;
+            let public = PublicMetricsView { monthly_success: m.monthly_success, daily_success: m.daily_success };
+            let token_sig: Option<(i64,i64,i64)> = if let Some(token) = token_param.as_ref() {
+                let valid = state.proxy.validate_access_token(token).await.ok()?;
+                if !valid { None } else {
+                    let id = token.strip_prefix("th-").and_then(|r| r.split_once('-').map(|(id, _)| id))?;
+                    let (ms, ds, df) = state.proxy.token_success_breakdown(id).await.ok()?;
+                    Some((ms, ds, df))
+                }
+            } else { None };
+            let token = token_sig.map(|(ms,ds,df)| TokenMetricsView { monthly_success: ms, daily_success: ds, daily_failure: df });
+            let sig: PublicSig = (public.monthly_success, public.daily_success, token_sig);
+            let payload = PublicMetricsPayload { public, token };
+            Some((payload, sig))
+        }
+
+        let mut last_sig: Option<PublicSig> = None;
+        if let Some((payload, sig)) = compute(&state, &token_param).await {
+            let json = serde_json::to_string(&payload).unwrap_or_else(|_| "{}".to_string());
+            yield Ok(Event::default().event("metrics").data(json));
+            last_sig = Some(sig);
+        }
+        loop {
+            if let Some((payload, sig)) = compute(&state, &token_param).await {
+                if last_sig != Some(sig) {
+                    let json = serde_json::to_string(&payload).unwrap_or_else(|_| "{}".to_string());
+                    yield Ok(Event::default().event("metrics").data(json));
+                    last_sig = Some(sig);
+                } else {
+                    yield Ok(Event::default().event("ping").data("{}"));
+                }
+            }
+            tokio::time::sleep(Duration::from_secs(2)).await;
+        }
+    };
+
+    Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)).text("")))
+}
+
 async fn build_snapshot_event(state: &Arc<AppState>) -> Option<Event> {
     let summary = state.proxy.summary().await.ok()?;
     let keys = state.proxy.list_api_key_metrics().await.ok()?;
@@ -1072,6 +1133,7 @@ pub async fn serve(
         .route("/api/debug/is-admin", get(debug_is_admin))
         .route("/api/debug/forward-auth", get(get_forward_auth_debug))
         .route("/api/debug/admin", get(get_admin_debug))
+        .route("/api/public/events", get(sse_public))
         .route("/api/token/metrics", get(get_token_metrics))
         .route("/api/events", get(sse_dashboard))
         .route("/api/version", get(get_versions))
