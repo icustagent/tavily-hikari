@@ -87,6 +87,11 @@ button {
   margin-top: 24px;
 }
 
+.hero-metrics {
+  margin-top: 24px;
+  padding: 0;
+}
+
 .token-input-wrapper {
   display: flex;
   flex-direction: column;

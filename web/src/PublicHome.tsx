@@ -346,6 +346,39 @@ function PublicHome(): JSX.Element {
         <p className="public-home-description">
           Tavily Hikari 将多组 Tavily API Key 聚合为一个统一入口，自动均衡每个密钥的用量，避免本地频繁切换账户；并提供请求审计、速率监控与跨客户端分享的访问令牌管理。
         </p>
+        {error && <div className="surface error-banner" role="status">{error}</div>}
+        <div className="metrics-grid hero-metrics">
+          <div className="metric-card">
+            <h3>本月成功请求（UTC）</h3>
+            <div className="metric-value">
+              {loading ? '—' : formatNumber(metrics?.monthlySuccess ?? 0)}
+            </div>
+            <div className="metric-subtitle">Tavily 月额度按 UTC 月初自动重置</div>
+          </div>
+          <div className="metric-card">
+            <h3>今日（服务器时区）</h3>
+            <div className="metric-value">{loading ? '—' : formatNumber(metrics?.dailySuccess ?? 0)}</div>
+            <div className="metric-subtitle">从服务器午夜起累计的成功请求</div>
+          </div>
+          <div className="metric-card">
+            <h3>号池可用数</h3>
+            <div className="metric-value">
+              {loading ? '—' : availableKeys != null && totalKeys != null ? `${availableKeys}/${totalKeys}` : '—'}
+            </div>
+            <div className="metric-subtitle">活跃 Tavily API Key / 总密钥（含本月耗尽）</div>
+          </div>
+        </div>
+        {isAdmin && (
+          <button type="button" className="button button-primary" onClick={() => { window.location.href = '/admin' }}>
+            Open Admin Dashboard
+          </button>
+        )}
+      </section>
+      <section className="surface panel public-home-metrics">
+        <header className="public-home-metrics-header">
+          <h2>Access Token</h2>
+          <p className="panel-description">将生成的 Token 贴给任何 MCP 客户端即可使用本站服务。</p>
+        </header>
         <div className="public-home-actions">
           <div className="token-input-wrapper">
             <label htmlFor="access-token" className="token-label">
@@ -387,39 +420,6 @@ function PublicHome(): JSX.Element {
                 <span>{copyState === 'copied' ? '已复制' : copyState === 'error' ? '复制失败' : '复制令牌'}</span>
               </button>
             </div>
-          </div>
-          {isAdmin && (
-            <button type="button" className="button button-primary" onClick={() => { window.location.href = '/admin' }}>
-              Open Admin Dashboard
-            </button>
-          )}
-        </div>
-      </section>
-      <section className="surface panel public-home-metrics">
-        <header className="public-home-metrics-header">
-          <h2>Successful Requests</h2>
-          <p className="panel-description">Live counters across the entire proxy deployment.</p>
-        </header>
-        {error && <div className="surface error-banner" role="status">{error}</div>}
-        <div className="metrics-grid">
-          <div className="metric-card">
-            <h3>本月成功请求（UTC）</h3>
-            <div className="metric-value">
-              {loading ? '—' : formatNumber(metrics?.monthlySuccess ?? 0)}
-            </div>
-            <div className="metric-subtitle">Tavily 月额度按 UTC 月初自动重置</div>
-          </div>
-          <div className="metric-card">
-            <h3>今日（服务器时区）</h3>
-            <div className="metric-value">{loading ? '—' : formatNumber(metrics?.dailySuccess ?? 0)}</div>
-            <div className="metric-subtitle">从服务器午夜起累计的成功请求</div>
-          </div>
-          <div className="metric-card">
-            <h3>号池可用数</h3>
-            <div className="metric-value">
-              {loading ? '—' : availableKeys != null && totalKeys != null ? `${availableKeys}/${totalKeys}` : '—'}
-            </div>
-            <div className="metric-subtitle">活跃 Tavily API Key / 总密钥（含本月耗尽）</div>
           </div>
         </div>
       </section>
