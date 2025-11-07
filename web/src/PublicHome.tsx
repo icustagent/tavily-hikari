@@ -173,6 +173,28 @@ function PublicHome(): JSX.Element {
     }
   }, [token])
 
+  // Fallback polling: if token metrics未就绪或 SSE 不返回 token 段，定期补一次拉取
+  useEffect(() => {
+    if (!token || !isFullToken(token)) return
+    let active = true
+    const tick = async () => {
+      try {
+        const tm = await fetchTokenMetrics(token)
+        if (!active) return
+        setTokenMetrics(tm)
+      } catch {
+        // ignore
+      }
+    }
+    // 先补一次
+    tick()
+    const id = window.setInterval(tick, 6000)
+    return () => {
+      active = false
+      window.clearInterval(id)
+    }
+  }, [token])
+
   const isAdmin = profile?.isAdmin ?? false
   const availableKeys = summary?.active_keys ?? null
   const exhaustedKeys = summary?.exhausted_keys ?? null
