@@ -3,9 +3,11 @@ import {
   fetchPublicMetrics,
   fetchProfile,
   fetchSummary,
+  fetchTokenMetrics,
   type Profile,
   type PublicMetrics,
   type Summary,
+  type TokenMetrics,
 } from './api'
 import useUpdateAvailable from './hooks/useUpdateAvailable'
 
@@ -60,6 +62,7 @@ function PublicHome(): JSX.Element {
   const [token, setToken] = useState(DEFAULT_TOKEN)
   const [tokenVisible, setTokenVisible] = useState(false)
   const [metrics, setMetrics] = useState<PublicMetrics | null>(null)
+  const [tokenMetrics, setTokenMetrics] = useState<TokenMetrics | null>(null)
   const [summary, setSummary] = useState<Summary | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -123,6 +126,11 @@ function PublicHome(): JSX.Element {
           if (reason?.name !== 'AbortError') {
             setError((prev) => prev ?? (reason instanceof Error ? reason.message : 'Unable to load summary data'))
           }
+        }
+        if (initialToken && isFullToken(initialToken)) {
+          fetchTokenMetrics(initialToken, controller.signal)
+            .then((tm) => setTokenMetrics(tm))
+            .catch(() => setTokenMetrics(null))
         }
       })
       .finally(() => {
@@ -418,18 +426,21 @@ function PublicHome(): JSX.Element {
       </section>
       <section className="surface panel access-panel">
         <div className="access-panel-grid">
+          <header className="panel-header" style={{ marginBottom: 8 }}>
+            <h2>令牌使用统计</h2>
+          </header>
           <div className="access-stats">
             <div className="access-stat">
               <h4>今日成功</h4>
-              <p>{loading ? '—' : formatNumber(metrics?.dailySuccess ?? 0)}</p>
+              <p>{loading ? '—' : formatNumber((tokenMetrics?.dailySuccess ?? 0))}</p>
             </div>
             <div className="access-stat">
               <h4>今日失败</h4>
-              <p>{loading ? '—' : formatNumber((summary?.error_count ?? 0) - (summary?.success_count ?? 0))}</p>
+              <p>{loading ? '—' : formatNumber(tokenMetrics?.dailyFailure ?? 0)}</p>
             </div>
             <div className="access-stat">
               <h4>本月成功</h4>
-              <p>{loading ? '—' : formatNumber(metrics?.monthlySuccess ?? 0)}</p>
+              <p>{loading ? '—' : formatNumber(tokenMetrics?.monthlySuccess ?? 0)}</p>
             </div>
           </div>
           <div className="access-token-box">
@@ -448,7 +459,11 @@ function PublicHome(): JSX.Element {
                     setToken(value)
                   }}
                   onBlur={(event) => {
-                    persistToken(event.target.value)
+                    const next = event.target.value
+                    persistToken(next)
+                    if (isFullToken(next)) {
+                      fetchTokenMetrics(next).then(setTokenMetrics).catch(() => setTokenMetrics(null))
+                    }
                   }}
                   placeholder="th-xxxx-xxxxxxxxxxxx"
                   autoComplete="off"

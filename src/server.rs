@@ -445,6 +445,53 @@ async fn get_public_metrics(
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct TokenMetricsView {
+    monthly_success: i64,
+    daily_success: i64,
+    daily_failure: i64,
+}
+
+#[derive(Deserialize)]
+struct TokenQuery {
+    token: String,
+}
+
+async fn get_token_metrics(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<TokenQuery>,
+) -> Result<Json<TokenMetricsView>, StatusCode> {
+    // Validate token first
+    if !state
+        .proxy
+        .validate_access_token(&q.token)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    // Extract id
+    let token_id = q
+        .token
+        .strip_prefix("th-")
+        .and_then(|rest| rest.split_once('-').map(|(id, _)| id))
+        .ok_or(StatusCode::BAD_REQUEST)?;
+
+    let (monthly_success, daily_success, daily_failure) = state
+        .proxy
+        .token_success_breakdown(token_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(TokenMetricsView {
+        monthly_success,
+        daily_success,
+        daily_failure,
+    }))
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct DashboardSnapshot {
     summary: SummaryView,
     keys: Vec<ApiKeyView>,
@@ -1025,6 +1072,7 @@ pub async fn serve(
         .route("/api/debug/is-admin", get(debug_is_admin))
         .route("/api/debug/forward-auth", get(get_forward_auth_debug))
         .route("/api/debug/admin", get(get_admin_debug))
+        .route("/api/token/metrics", get(get_token_metrics))
         .route("/api/events", get(sse_dashboard))
         .route("/api/version", get(get_versions))
         .route("/api/profile", get(get_profile))
@@ -1360,12 +1408,22 @@ async fn proxy_handler(
         .await
         .map_err(|_| StatusCode::BAD_REQUEST)?;
 
+    let auth_token_id = if state.dev_open_admin {
+        Some("dev".to_string())
+    } else {
+        token
+            .strip_prefix("th-")
+            .and_then(|rest| rest.split_once('-').map(|(id, _)| id))
+            .map(|s| s.to_string())
+    };
+
     let proxy_request = ProxyRequest {
         method,
         path,
         query,
         headers,
         body: body_bytes.clone(),
+        auth_token_id,
     };
 
     match state.proxy.proxy_request(proxy_request).await {

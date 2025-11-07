@@ -13,6 +13,12 @@ export interface PublicMetrics {
   dailySuccess: number
 }
 
+export interface TokenMetrics {
+  monthlySuccess: number
+  dailySuccess: number
+  dailyFailure: number
+}
+
 export interface ApiKeyStats {
   id: string
   status: string
@@ -84,6 +90,11 @@ export function fetchSummary(signal?: AbortSignal): Promise<Summary> {
 
 export function fetchPublicMetrics(signal?: AbortSignal): Promise<PublicMetrics> {
   return requestJson('/api/public/metrics', { signal })
+}
+
+export function fetchTokenMetrics(token: string, signal?: AbortSignal): Promise<TokenMetrics> {
+  const params = new URLSearchParams({ token })
+  return requestJson(`/api/token/metrics?${params.toString()}`, { signal })
 }
 
 export function fetchApiKeys(signal?: AbortSignal): Promise<ApiKeyStats[]> {
