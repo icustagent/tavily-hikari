@@ -1,5 +1,6 @@
 import { ReactNode, useEffect, useMemo, useState } from 'react'
 import { fetchPublicMetrics, fetchProfile, type Profile, type PublicMetrics } from './api'
+import useUpdateAvailable from './hooks/useUpdateAvailable'
 
 type GuideLanguage = 'toml' | 'json' | 'bash'
 
@@ -52,6 +53,7 @@ function PublicHome(): JSX.Element {
   const [error, setError] = useState<string | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [activeGuide, setActiveGuide] = useState<GuideKey>('codex')
+  const updateBanner = useUpdateAvailable()
 
   useEffect(() => {
     const hash = window.location.hash.slice(1)
@@ -281,6 +283,24 @@ function PublicHome(): JSX.Element {
 
   return (
     <main className="app-shell public-home">
+      {updateBanner.visible && (
+        <section className="surface update-banner" role="status" aria-live="polite">
+          <div className="update-banner-text">
+            <strong>有新版本上线</strong>
+            <span>
+              当前 {updateBanner.currentVersion ?? 'unknown'} → 可用 {updateBanner.availableVersion ?? 'latest'}
+            </span>
+          </div>
+          <div className="update-banner-actions">
+            <button type="button" className="button button-primary" onClick={updateBanner.reload}>
+              刷新以更新
+            </button>
+            <button type="button" className="button" onClick={updateBanner.dismiss}>
+              暂不提醒
+            </button>
+          </div>
+        </section>
+      )}
       <section className="surface public-home-hero">
         <h1>Tavily Hikari Proxy</h1>
         <p className="public-home-tagline">Transparent request visibility for your Tavily integration.</p>

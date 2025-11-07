@@ -213,6 +213,37 @@ button {
   text-decoration: underline;
 }
 
+.update-banner {
+  padding: 18px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  border-left: 4px solid #38bdf8;
+}
+
+.update-banner-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.update-banner-text strong {
+  font-size: 0.95rem;
+  color: #0f172a;
+}
+
+.update-banner-text span {
+  color: #475569;
+  font-size: 0.85rem;
+}
+
+.update-banner-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .guide-code[data-lang='json']::before,
 .guide-code[data-lang='toml']::before,
 .guide-code[data-lang='bash']::before {
