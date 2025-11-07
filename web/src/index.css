@@ -272,6 +272,19 @@ button {
   color: #475569;
 }
 
+.footer-gh {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.footer-gh svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+
 .guide-code[data-lang='json']::before,
 .guide-code[data-lang='toml']::before,
 .guide-code[data-lang='bash']::before {

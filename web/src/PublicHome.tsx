@@ -25,6 +25,7 @@ const CLAUDE_DOC_URL = 'https://code.claude.com/docs/en/mcp'
 const VSCODE_DOC_URL = 'https://code.visualstudio.com/docs/copilot/customization/mcp-servers'
 const NOCODB_DOC_URL = 'https://nocodb.com/docs/product-docs/mcp'
 const MCP_SPEC_URL = 'https://modelcontextprotocol.io/introduction'
+const REPO_URL = 'https://github.com/IvanLi-CN/tavily-hikari'
 
 const GUIDE_TABS: Array<{ id: GuideKey; label: string }> = [
   { id: 'codex', label: 'Codex CLI' },
@@ -281,6 +282,10 @@ function PublicHome(): JSX.Element {
     return guides[activeGuide]
   }, [activeGuide, token])
 
+  const versionTagUrl = updateBanner.currentVersion
+    ? `${REPO_URL}/tree/v${encodeURIComponent(updateBanner.currentVersion)}`
+    : null
+
   return (
     <main className="app-shell public-home">
       {updateBanner.visible && (
@@ -403,13 +408,22 @@ function PublicHome(): JSX.Element {
       <footer className="surface public-home-footer">
         <div className="footer-links">
           <span>开源仓库：</span>
-          <a href="https://github.com/IvanLi-CN/tavily-hikari" target="_blank" rel="noreferrer">
-            github.com/IvanLi-CN/tavily-hikari
+          <a className="footer-gh" href={REPO_URL} target="_blank" rel="noreferrer">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 .5a12 12 0 0 0-3.79 23.4c.6.11.82-.26.82-.58 0-.29-.01-1.06-.02-2.07-3.34.73-4.04-1.61-4.04-1.61-.55-1.38-1.35-1.75-1.35-1.75-1.1-.76.08-.75.08-.75 1.22.09 1.86 1.27 1.86 1.27 1.08 1.85 2.83 1.32 3.52 1.01.11-.79.42-1.32.76-1.62-2.67-.3-5.48-1.34-5.48-5.96 0-1.32.47-2.39 1.25-3.24-.13-.3-.54-1.52.12-3.17 0 0 1.01-.32 3.3 1.23a11.4 11.4 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.66 1.65.25 2.87.12 3.17.78.85 1.25 1.92 1.25 3.24 0 4.63-2.81 5.65-5.49 5.95.43.37.82 1.09.82 2.2 0 1.59-.02 2.87-.02 3.26 0 .32.22.7.83.58A12 12 0 0 0 12 .5Z" />
+            </svg>
+            <span>GitHub</span>
           </a>
         </div>
         <div className="footer-version">
           <span>当前版本：</span>
-          <code>{updateBanner.currentVersion ?? '—'}</code>
+          {versionTagUrl ? (
+            <a href={versionTagUrl} target="_blank" rel="noreferrer">
+              <code>v{updateBanner.currentVersion}</code>
+            </a>
+          ) : (
+            <code>—</code>
+          )}
         </div>
       </footer>
     </main>
