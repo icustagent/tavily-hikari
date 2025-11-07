@@ -1,5 +1,25 @@
-import { useEffect, useMemo, useState } from 'react'
+import { ReactNode, useEffect, useMemo, useState } from 'react'
 import { fetchPublicMetrics, fetchProfile, type Profile, type PublicMetrics } from './api'
+
+type GuideLanguage = 'toml' | 'json' | 'bash'
+
+interface GuideReference {
+  label: string
+  url: string
+}
+
+interface GuideContent {
+  title: string
+  steps: ReactNode[]
+  sampleTitle?: string
+  snippetLanguage?: GuideLanguage
+  snippet?: string
+  reference?: GuideReference
+}
+
+const CODEX_DOC_URL = 'https://github.com/openai/codex/blob/main/docs/config.md'
+const CLAUDE_DOC_URL = 'https://code.claude.com/docs/en/mcp'
+const VSCODE_DOC_URL = 'https://code.visualstudio.com/docs/copilot/customization/mcp-servers'
 
 const numberFormatter = new Intl.NumberFormat('en-US', {
   maximumFractionDigits: 0,
@@ -58,48 +78,98 @@ function PublicHome(): JSX.Element {
 
   const isAdmin = profile?.isAdmin ?? false
 
-  const guideDescription = useMemo(() => {
+  const guideDescription = useMemo<GuideContent>(() => {
     const baseUrl = window.location.origin
+    const prettyToken = token || DEFAULT_TOKEN
+
     switch (activeGuide) {
-      case 'codex':
+      case 'codex': {
+        const snippet = [
+          '<span class="hl-comment"># ~/.codex/config.toml</span>',
+          'experimental_use_rmcp_client = true',
+          '',
+          '[mcp_servers.tavily_hikari]',
+          `url = "<span class=\"hl-string\">${baseUrl}/mcp</span>"`,
+          'bearer_token_env_var = "TAVILY_HIKARI_TOKEN"',
+        ].join('\n')
+
         return {
           title: 'Codex CLI',
           steps: [
-            '编辑配置文件 `~/.codex/credentials`（或当前 profile 的 `mcp_headers`）',
-            `在 headers 中加入 \`Authorization: Bearer ${token || DEFAULT_TOKEN}\``,
-            `将自定义 MCP upstream 指向 \`${baseUrl}/mcp\``,
-            '保存后执行 `codex mcp connect tavily-hikari` 或直接在 CLI 中调用。',
+            <>在 <code>~/.codex/config.toml</code> 设定 <code>experimental_use_rmcp_client = true</code>。</>,
+            <>添加 <code>[mcp_servers.tavily_hikari]</code>，将 <code>url</code> 指向 <code>{baseUrl}/mcp</code> 并声明 <code>bearer_token_env_var = TAVILY_HIKARI_TOKEN</code>。</>,
+            <>运行 <code>export TAVILY_HIKARI_TOKEN="{prettyToken}"</code> 后，执行 <code>codex mcp list</code> 或 <code>codex mcp get tavily_hikari</code> 验证。</>,
           ],
-          sampleTitle: '示例：~/.codex/credentials',
+          sampleTitle: '示例：~/.codex/config.toml',
           snippetLanguage: 'toml',
-          snippet: `[mcp_servers.tavily-hikari]\nurl = \"${baseUrl}/mcp\"\nheaders = { Authorization = \"Bearer ${token || DEFAULT_TOKEN}\" }`,
+          snippet,
+          reference: {
+            label: 'OpenAI Codex docs',
+            url: CODEX_DOC_URL,
+          },
         }
-      case 'claude':
+      }
+      case 'claude': {
+        const snippet = [
+          '<span class="hl-comment"># claude mcp add-json</span>',
+          `claude mcp add-json tavily-hikari '{`,
+          `  <span class=\"hl-key\">"type"</span>: <span class=\"hl-string\">"http"</span>,`,
+          `  <span class=\"hl-key\">"url"</span>: <span class=\"hl-string\">"${baseUrl}/mcp"</span>,`,
+          '  <span class="hl-key">"headers"</span>: {',
+          `    <span class=\"hl-key\">"Authorization"</span>: <span class=\"hl-string\">"Bearer ${prettyToken}"</span>`,
+          '  }',
+          "}'",
+          '',
+          '# 验证',
+          'claude mcp get tavily-hikari',
+        ].join('\n')
+
         return {
           title: 'Claude Code',
           steps: [
-            '打开设置 → Custom MCP Servers → Add Endpoint',
-            `URL 填写 \`${baseUrl}/mcp\``,
-            `在 HTTP Headers 增加 \`Authorization: Bearer ${token || DEFAULT_TOKEN}\``,
-            '保存后在 Claude Code 侧边栏启用该 MCP，即可使用 Tavily 功能。',
+            <>参考下方命令，使用 <code>claude mcp add-json</code> 注册 Tavily Hikari HTTP MCP。</>,
+            <>运行 <code>claude mcp get tavily-hikari</code> 查看状态或排查错误。</>,
           ],
-          sampleTitle: '示例：claude_desktop_config.json',
-          snippetLanguage: 'json',
-          snippet: `{\n  <span class=\"hl-key\">\"mcpServers\"</span>: [\n    {\n      <span class=\"hl-key\">\"name\"</span>: <span class=\"hl-string\">\"tavily-hikari\"</span>,\n      <span class=\"hl-key\">\"baseUrl\"</span>: <span class=\"hl-string\">\"${baseUrl}/mcp\"</span>,\n      <span class=\"hl-key\">\"auth\"</span>: {\n        <span class=\"hl-key\">\"type\"</span>: <span class=\"hl-string\">\"bearer\"</span>,\n        <span class=\"hl-key\">\"token\"</span>: <span class=\"hl-string\">\"${token || DEFAULT_TOKEN}\"</span>\n      }\n    }\n  ]\n}`,
+          sampleTitle: '示例：claude mcp add-json',
+          snippetLanguage: 'bash',
+          snippet,
+          reference: {
+            label: 'Claude Code MCP docs',
+            url: CLAUDE_DOC_URL,
+          },
         }
-      default:
+      }
+      default: {
+        const snippet = [
+          '{',
+          '  <span class="hl-key">"servers"</span>: {',
+          '    <span class="hl-key">"tavily-hikari"</span>: {',
+          '      <span class="hl-key">"type"</span>: <span class="hl-string">"http"</span>,',
+          `      <span class=\"hl-key\">"url"</span>: <span class=\"hl-string\">"${baseUrl}/mcp"</span>,`,
+          '      <span class="hl-key">"headers"</span>: {',
+          `        <span class=\"hl-key\">"Authorization"</span>: <span class=\"hl-string\">"Bearer ${prettyToken}"</span>`,
+          '      }',
+          '    }',
+          '  }',
+          '}',
+        ].join('\n')
+
         return {
           title: '其他 MCP 客户端',
           steps: [
-            `确保请求地址指向 \`${baseUrl}/mcp\``,
-            `向请求添加 Authorization Header：\`Bearer ${token || DEFAULT_TOKEN}\``,
-            '参考下方 cURL 调用示例，确认代理能正常响应。',
-            '遇到认证失败，请联系管理员更新 Access Token。',
+            <>在 VS Code Copilot <code>mcp.json</code>（或 <code>.code-workspace</code>/<code>devcontainer.json</code> 的 <code>customizations.vscode.mcp</code>）添加服务器节点。</>,
+            <>设置 <code>type</code> 为 <code>"http"</code>、<code>url</code> 为 <code>{baseUrl}/mcp</code>，并在 <code>headers.Authorization</code> 写入 <code>Bearer {prettyToken}</code>。</>,
+            <>保存后重新打开 Copilot Chat，使配置与 <a href={VSCODE_DOC_URL} rel="noreferrer" target="_blank">官方指南</a> 保持一致。</>,
           ],
-          sampleTitle: '示例：curl 测试请求',
-          snippetLanguage: 'bash',
-          snippet: `curl -H "Authorization: Bearer ${token || DEFAULT_TOKEN}" \\\n+     -H "Content-Type: application/json" \\\n+     ${baseUrl}/mcp/health`,
+          sampleTitle: '示例：mcp.json',
+          snippetLanguage: 'json',
+          snippet,
+          reference: {
+            label: 'VS Code Copilot MCP 文档',
+            url: VSCODE_DOC_URL,
+          },
         }
+      }
     }
   }, [activeGuide, token])
 
@@ -205,10 +275,14 @@ function PublicHome(): JSX.Element {
               </pre>
             </div>
           )}
-          <p className="guide-note">
-            想快速分享访问？复制当前链接，我们会把 Access Token 放在 URL Hash 中，例如{' '}
-            <code>{window.location.origin}/#{token || DEFAULT_TOKEN}</code>。
-          </p>
+          {guideDescription.reference && (
+            <p className="guide-reference">
+              数据来源：
+              <a href={guideDescription.reference.url} target="_blank" rel="noreferrer">
+                {guideDescription.reference.label}
+              </a>
+            </p>
+          )}
         </div>
       </section>
     </main>

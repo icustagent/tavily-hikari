@@ -198,6 +198,21 @@ button {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
+.guide-reference {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
+.guide-reference a {
+  color: #c4b5fd;
+  text-decoration: none;
+}
+
+.guide-reference a:hover {
+  text-decoration: underline;
+}
+
 .guide-code[data-lang='json']::before,
 .guide-code[data-lang='toml']::before,
 .guide-code[data-lang='bash']::before {
