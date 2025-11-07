@@ -922,10 +922,9 @@ tbody .log-details-row:hover {
 }
 
 .access-panel-grid {
-  display: grid;
-  grid-template-columns: minmax(320px, 1fr) minmax(220px, 320px);
-  gap: 20px;
-  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
 }
 
 .access-token-box {
@@ -936,15 +935,18 @@ tbody .log-details-row:hover {
 
 .access-stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px;
 }
 
 .access-stat {
   border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 14px;
-  background: rgba(248, 250, 252, 0.9);
-  padding: 14px;
+  background: rgba(248, 250, 252, 0.95);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .access-stat h4 {
@@ -954,8 +956,8 @@ tbody .log-details-row:hover {
 }
 
 .access-stat p {
-  margin: 6px 0 0;
-  font-size: 1.4rem;
+  margin: 0;
+  font-size: 1.6rem;
   font-weight: 700;
   color: #0f172a;
 }
