@@ -34,6 +34,7 @@ const NOCODB_DOC_URL = 'https://nocodb.com/docs/product-docs/mcp'
 const MCP_SPEC_URL = 'https://modelcontextprotocol.io/introduction'
 const REPO_URL = 'https://github.com/IvanLi-CN/tavily-hikari'
 const ICONIFY_ENDPOINT = 'https://api.iconify.design'
+const STORAGE_TOKEN_KEY = 'tavily-hikari-token'
 
 const GUIDE_TABS: Array<{ id: GuideKey; label: string }> = [
   { id: 'codex', label: 'Codex CLI' },
@@ -68,10 +69,27 @@ function PublicHome(): JSX.Element {
 
   useEffect(() => {
     const hash = window.location.hash.slice(1)
+    const persisted = (() => {
+      try {
+        return localStorage.getItem(STORAGE_TOKEN_KEY)
+      } catch {
+        return null
+      }
+    })()
+
+    let initialToken = DEFAULT_TOKEN
     if (hash) {
-      setToken(decodeURIComponent(hash))
-    } else {
-      window.location.hash = encodeURIComponent(DEFAULT_TOKEN)
+      initialToken = decodeURIComponent(hash)
+    } else if (persisted) {
+      initialToken = persisted
+    }
+
+    setToken(initialToken)
+    window.location.hash = encodeURIComponent(normalizeTokenHash(initialToken))
+    try {
+      localStorage.setItem(STORAGE_TOKEN_KEY, initialToken)
+    } catch {
+      /* ignore */
     }
 
     const controller = new AbortController()
@@ -320,6 +338,16 @@ function PublicHome(): JSX.Element {
     }
   }, [token])
 
+  const persistToken = useCallback((next: string) => {
+    setToken(next)
+    window.location.hash = encodeURIComponent(normalizeTokenHash(next))
+    try {
+      localStorage.setItem(STORAGE_TOKEN_KEY, next)
+    } catch {
+      /* noop */
+    }
+  }, [])
+
   return (
     <main className="app-shell public-home">
       {updateBanner.visible && (
@@ -394,7 +422,9 @@ function PublicHome(): JSX.Element {
                   onChange={(event) => {
                     const value = event.target.value
                     setToken(value)
-                    window.location.hash = encodeURIComponent(value)
+                  }}
+                  onBlur={(event) => {
+                    persistToken(event.target.value)
                   }}
                   placeholder="th-xxxx-xxxxxxxxxxxx"
                   autoComplete="off"
@@ -483,3 +513,14 @@ function PublicHome(): JSX.Element {
 }
 
 export default PublicHome
+function normalizeTokenHash(value: string): string {
+  const maybeId = extractTokenId(value)
+  return maybeId ?? value
+}
+
+function extractTokenId(value: string): string | null {
+  const fullTokenMatch = /^th-([a-zA-Z0-9]{4})-[a-zA-Z0-9]+$/.exec(value)
+  if (fullTokenMatch) return fullTokenMatch[1]
+  if (/^[a-zA-Z0-9]{4}$/.test(value)) return value
+  return null
+}
