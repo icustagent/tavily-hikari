@@ -59,7 +59,7 @@ function formatNumber(value: number): string {
 }
 
 function PublicHome(): JSX.Element {
-  const DEFAULT_TOKEN = 'th-demo-1234567890'
+  const DEFAULT_TOKEN = 'th-demo-123456789012'
   const [token, setToken] = useState(DEFAULT_TOKEN)
   const [tokenVisible, setTokenVisible] = useState(false)
   const [metrics, setMetrics] = useState<PublicMetrics | null>(null)
