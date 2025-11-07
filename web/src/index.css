@@ -123,8 +123,9 @@ button {
 
 .token-input-shell {
   position: relative;
-  flex: 1 1 auto;
-  min-width: 280px;
+  /* Keep copy button close to input: do not stretch */
+  flex: 0 0 auto;
+  display: inline-block;
 }
 
 
