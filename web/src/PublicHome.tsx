@@ -85,7 +85,7 @@ function PublicHome(): JSX.Element {
           ],
           sampleTitle: '示例：claude_desktop_config.json',
           snippetLanguage: 'json',
-          snippet: `{\n  \"mcpServers\": [\n    {\n      \"name\": \"tavily-hikari\",\n      \"baseUrl\": \"${baseUrl}/mcp\",\n      \"auth\": {\n        \"type\": \"bearer\",\n        \"token\": \"${token || DEFAULT_TOKEN}\"\n      }\n    }\n  ]\n}`,
+          snippet: `{\n  <span class=\"hl-key\">\"mcpServers\"</span>: [\n    {\n      <span class=\"hl-key\">\"name\"</span>: <span class=\"hl-string\">\"tavily-hikari\"</span>,\n      <span class=\"hl-key\">\"baseUrl\"</span>: <span class=\"hl-string\">\"${baseUrl}/mcp\"</span>,\n      <span class=\"hl-key\">\"auth\"</span>: {\n        <span class=\"hl-key\">\"type\"</span>: <span class=\"hl-string\">\"bearer\"</span>,\n        <span class=\"hl-key\">\"token\"</span>: <span class=\"hl-string\">\"${token || DEFAULT_TOKEN}\"</span>\n      }\n    }\n  ]\n}`,
         }
       default:
         return {
@@ -201,7 +201,7 @@ function PublicHome(): JSX.Element {
             <div className="guide-sample">
               <p className="guide-sample-title">{guideDescription.sampleTitle}</p>
               <pre className="guide-code" data-lang={guideDescription.snippetLanguage}>
-                <code>{guideDescription.snippet}</code>
+                <code dangerouslySetInnerHTML={{ __html: guideDescription.snippet }} />
               </pre>
             </div>
           )}

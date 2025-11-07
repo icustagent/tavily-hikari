@@ -217,6 +217,19 @@ button {
   white-space: pre;
 }
 
+.guide-code .hl-key {
+  color: #a5b4fc;
+}
+
+.guide-code .hl-string {
+  color: #fbcfe8;
+}
+
+.guide-code .hl-comment {
+  color: #9ca3af;
+  font-style: italic;
+}
+
 .public-home-metrics {
   display: flex;
   flex-direction: column;
