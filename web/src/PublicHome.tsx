@@ -3,6 +3,8 @@ import { fetchPublicMetrics, fetchProfile, type Profile, type PublicMetrics } fr
 
 type GuideLanguage = 'toml' | 'json' | 'bash'
 
+type GuideKey = 'codex' | 'claude' | 'vscode' | 'claudeDesktop' | 'cursor' | 'windsurf'
+
 interface GuideReference {
   label: string
   url: string
@@ -20,6 +22,16 @@ interface GuideContent {
 const CODEX_DOC_URL = 'https://github.com/openai/codex/blob/main/docs/config.md'
 const CLAUDE_DOC_URL = 'https://code.claude.com/docs/en/mcp'
 const VSCODE_DOC_URL = 'https://code.visualstudio.com/docs/copilot/customization/mcp-servers'
+const NOCODB_DOC_URL = 'https://nocodb.com/docs/product-docs/mcp'
+
+const GUIDE_TABS: Array<{ id: GuideKey; label: string }> = [
+  { id: 'codex', label: 'Codex CLI' },
+  { id: 'claude', label: 'Claude Code CLI' },
+  { id: 'vscode', label: 'VS Code / Copilot' },
+  { id: 'claudeDesktop', label: 'Claude Desktop' },
+  { id: 'cursor', label: 'Cursor' },
+  { id: 'windsurf', label: 'Windsurf' },
+]
 
 const numberFormatter = new Intl.NumberFormat('en-US', {
   maximumFractionDigits: 0,
@@ -37,7 +49,7 @@ function PublicHome(): JSX.Element {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
-  const [activeGuide, setActiveGuide] = useState<'codex' | 'claude' | 'other'>('codex')
+  const [activeGuide, setActiveGuide] = useState<GuideKey>('codex')
 
   useEffect(() => {
     const hash = window.location.hash.slice(1)
@@ -82,8 +94,8 @@ function PublicHome(): JSX.Element {
     const baseUrl = window.location.origin
     const prettyToken = token || DEFAULT_TOKEN
 
-    switch (activeGuide) {
-      case 'codex': {
+    const guides: Record<GuideKey, GuideContent> = {
+      codex: (() => {
         const snippet = [
           '<span class="hl-comment"># ~/.codex/config.toml</span>',
           'experimental_use_rmcp_client = true',
@@ -108,8 +120,8 @@ function PublicHome(): JSX.Element {
             url: CODEX_DOC_URL,
           },
         }
-      }
-      case 'claude': {
+      })(),
+      claude: (() => {
         const snippet = [
           '<span class="hl-comment"># claude mcp add-json</span>',
           `claude mcp add-json tavily-hikari '{`,
@@ -138,8 +150,8 @@ function PublicHome(): JSX.Element {
             url: CLAUDE_DOC_URL,
           },
         }
-      }
-      default: {
+      })(),
+      vscode: (() => {
         const snippet = [
           '{',
           '  <span class="hl-key">"servers"</span>: {',
@@ -169,8 +181,82 @@ function PublicHome(): JSX.Element {
             url: VSCODE_DOC_URL,
           },
         }
+      })(),
+      claudeDesktop: {
+        title: 'Claude Desktop',
+        steps: [
+          <>打开 <code>⌘+,</code> → **Develop** → <code>Edit Config</code>，按照官方文档将 MCP JSON 写入本地 <code>claude_desktop_config.json</code>。</>,
+          <>在 JSON 中保留我们提供的 endpoint，保存后重启 Claude Desktop 以载入新的工具列表。</>,
+        ],
+        sampleTitle: '示例：claude_desktop_config.json',
+        snippetLanguage: 'json',
+        snippet: `{
+  <span class="hl-key">"mcpServers"</span>: {
+    <span class="hl-key">"tavily-hikari"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-string">"http"</span>,
+      <span class="hl-key">"url"</span>: <span class="hl-string">"${baseUrl}/mcp"</span>,
+      <span class="hl-key">"headers"</span>: {
+        <span class="hl-key">"Authorization"</span>: <span class="hl-string">"Bearer ${prettyToken}"</span>
       }
     }
+  }
+}`,
+        reference: {
+          label: 'NocoDB MCP docs',
+          url: NOCODB_DOC_URL,
+        },
+      },
+      cursor: {
+        title: 'Cursor',
+        steps: [
+          <>在 Cursor 设置（<code>⇧+⌘+J</code>）中打开 **MCP → Add Custom MCP**，按照官方指南编辑全局 <code>mcp.json</code>。</>,
+          <>粘贴下方配置并保存，回到 MCP 面板确认条目显示 “tools enabled”。</>,
+        ],
+        sampleTitle: '示例：~/.cursor/mcp.json',
+        snippetLanguage: 'json',
+        snippet: `{
+  <span class="hl-key">"mcpServers"</span>: {
+    <span class="hl-key">"tavily-hikari"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-string">"http"</span>,
+      <span class="hl-key">"url"</span>: <span class="hl-string">"${baseUrl}/mcp"</span>,
+      <span class="hl-key">"headers"</span>: {
+        <span class="hl-key">"Authorization"</span>: <span class="hl-string">"Bearer ${prettyToken}"</span>
+      }
+    }
+  }
+}`,
+        reference: {
+          label: 'NocoDB MCP docs',
+          url: NOCODB_DOC_URL,
+        },
+      },
+      windsurf: {
+        title: 'Windsurf',
+        steps: [
+          <>在 Windsurf 中点击 MCP 侧边栏的锤子图标 → **Configure**，再选择 **View raw config** 打开 <code>mcp_config.json</code>。</>,
+          <>将下方片段写入 <code>mcpServers</code>，保存后在 Manage Plugins 页点击 **Refresh** 以加载新工具。</>,
+        ],
+        sampleTitle: '示例：~/.codeium/windsurf/mcp_config.json',
+        snippetLanguage: 'json',
+        snippet: `{
+  <span class="hl-key">"mcpServers"</span>: {
+    <span class="hl-key">"tavily-hikari"</span>: {
+      <span class="hl-key">"type"</span>: <span class="hl-string">"http"</span>,
+      <span class="hl-key">"url"</span>: <span class="hl-string">"${baseUrl}/mcp"</span>,
+      <span class="hl-key">"headers"</span>: {
+        <span class="hl-key">"Authorization"</span>: <span class="hl-string">"Bearer ${prettyToken}"</span>
+      }
+    }
+  }
+}`,
+        reference: {
+          label: 'NocoDB MCP docs',
+          url: NOCODB_DOC_URL,
+        },
+      },
+    }
+
+    return guides[activeGuide]
   }, [activeGuide, token])
 
   return (
@@ -238,27 +324,16 @@ function PublicHome(): JSX.Element {
       <section className="surface panel public-home-guide">
         <h2>如何在常见 MCP 客户端中接入 Tavily Hikari</h2>
         <div className="guide-tabs">
-          <button
-            type="button"
-            className={`guide-tab${activeGuide === 'codex' ? ' active' : ''}`}
-            onClick={() => setActiveGuide('codex')}
-          >
-            Codex CLI
-          </button>
-          <button
-            type="button"
-            className={`guide-tab${activeGuide === 'claude' ? ' active' : ''}`}
-            onClick={() => setActiveGuide('claude')}
-          >
-            Claude Code
-          </button>
-          <button
-            type="button"
-            className={`guide-tab${activeGuide === 'other' ? ' active' : ''}`}
-            onClick={() => setActiveGuide('other')}
-          >
-            其他 MCP 客户端
-          </button>
+          {GUIDE_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              className={`guide-tab${activeGuide === tab.id ? ' active' : ''}`}
+              onClick={() => setActiveGuide(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
         <div className="guide-panel">
           <h3>{guideDescription.title}</h3>
