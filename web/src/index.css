@@ -107,13 +107,12 @@ button {
 
 .token-input-row {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
-  flex-wrap: wrap;
 }
 
 .token-input {
-  width: min(420px, 100vw - 200px);
+  width: 360px;
   padding: 10px 44px 10px 14px;
   border-radius: 12px;
   border: 1px solid rgba(15, 23, 42, 0.18);
@@ -128,10 +127,11 @@ button {
   min-width: 280px;
 }
 
+
 .token-visibility-button {
   position: absolute;
   top: 50%;
-  right: 10px;
+  right: 12px;
   transform: translateY(-50%);
   border: none;
   background: transparent;
