@@ -28,6 +28,9 @@ use tavily_hikari::{
     ApiKeyMetrics, AuthToken, ProxyRequest, ProxyResponse, ProxySummary, RequestLogRecord,
     TavilyProxy, TokenLogRecord, TokenSummary,
 };
+use tokio::signal;
+#[cfg(unix)]
+use tokio::signal::unix::{SignalKind, signal as unix_signal};
 use tower_http::services::{ServeDir, ServeFile};
 
 #[derive(Clone)]
@@ -1293,8 +1296,53 @@ pub async fn serve(
             .with_state(state)
             .into_make_service_with_connect_info::<SocketAddr>(),
     )
+    .with_graceful_shutdown(shutdown_signal())
     .await?;
+    println!("Server shut down gracefully.");
     Ok(())
+}
+
+async fn wait_for_ctrl_c() -> &'static str {
+    match signal::ctrl_c().await {
+        Ok(()) => "ctrl_c",
+        Err(err) => {
+            eprintln!("Failed to listen for Ctrl+C: {err}");
+            "ctrl_c_error"
+        }
+    }
+}
+
+#[cfg(unix)]
+async fn wait_for_sigterm() -> &'static str {
+    match unix_signal(SignalKind::terminate()) {
+        Ok(mut sigterm) => {
+            sigterm.recv().await;
+            "sigterm"
+        }
+        Err(err) => {
+            eprintln!("Failed to listen for SIGTERM: {err}");
+            wait_for_ctrl_c().await
+        }
+    }
+}
+
+async fn shutdown_signal() {
+    let signal = {
+        #[cfg(unix)]
+        {
+            tokio::select! {
+                reason = wait_for_ctrl_c() => reason,
+                reason = wait_for_sigterm() => reason,
+            }
+        }
+
+        #[cfg(not(unix))]
+        {
+            wait_for_ctrl_c().await
+        }
+    };
+
+    println!("Shutdown signal ({signal}) received, waiting for in-flight requests to finish...");
 }
 
 const BODY_LIMIT: usize = 16 * 1024 * 1024; // 16 MiB 默认限制
