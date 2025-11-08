@@ -187,6 +187,7 @@ impl TavilyProxy {
                 self.key_store
                     .log_attempt(AttemptLog {
                         key_id: &lease.id,
+                        auth_token_id: request.auth_token_id.as_deref(),
                         method: &request.method,
                         path: request.path.as_str(),
                         query: request.query.as_deref(),
@@ -224,6 +225,7 @@ impl TavilyProxy {
                 self.key_store
                     .log_attempt(AttemptLog {
                         key_id: &lease.id,
+                        auth_token_id: request.auth_token_id.as_deref(),
                         method: &request.method,
                         path: request.path.as_str(),
                         query: request.query.as_deref(),
@@ -417,6 +419,29 @@ impl TavilyProxy {
         self.key_store.fetch_summary().await
     }
 
+    /// Public metrics: successful requests today and this month.
+    pub async fn success_breakdown(&self) -> Result<SuccessBreakdown, ProxyError> {
+        let now = Utc::now();
+        let month_start = start_of_month(now).timestamp();
+        let day_start = start_of_day(now).timestamp();
+        self.key_store
+            .fetch_success_breakdown(month_start, day_start)
+            .await
+    }
+
+    /// Token-scoped success/failure breakdown.
+    pub async fn token_success_breakdown(
+        &self,
+        token_id: &str,
+    ) -> Result<(i64, i64, i64), ProxyError> {
+        let now = Utc::now();
+        let month_start = start_of_month(now).timestamp();
+        let day_start = start_of_day(now).timestamp();
+        self.key_store
+            .fetch_token_success_failure(token_id, month_start, day_start)
+            .await
+    }
+
     fn sanitize_headers(&self, headers: &HeaderMap) -> SanitizedHeaders {
         sanitize_headers_inner(headers, &self.upstream, &self.upstream_origin)
     }
@@ -467,6 +492,7 @@ impl KeyStore {
             CREATE TABLE IF NOT EXISTS request_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 api_key_id TEXT NOT NULL,
+                auth_token_id TEXT,
                 method TEXT NOT NULL,
                 path TEXT NOT NULL,
                 query TEXT,
@@ -860,6 +886,7 @@ impl KeyStore {
                 CREATE TABLE IF NOT EXISTS request_logs_new (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     api_key_id TEXT NOT NULL,
+                    auth_token_id TEXT,
                     method TEXT NOT NULL,
                     path TEXT NOT NULL,
                     query TEXT,
@@ -884,6 +911,7 @@ impl KeyStore {
                 INSERT INTO request_logs_new (
                     id,
                     api_key_id,
+                    auth_token_id,
                     method,
                     path,
                     query,
@@ -900,6 +928,7 @@ impl KeyStore {
                 SELECT
                     id,
                     api_key_id,
+                    NULL as auth_token_id,
                     method,
                     path,
                     query,
@@ -930,6 +959,12 @@ impl KeyStore {
 
         if !self.request_logs_column_exists("request_body").await? {
             sqlx::query("ALTER TABLE request_logs ADD COLUMN request_body BLOB")
+                .execute(&self.pool)
+                .await?;
+        }
+
+        if !self.request_logs_column_exists("auth_token_id").await? {
+            sqlx::query("ALTER TABLE request_logs ADD COLUMN auth_token_id TEXT")
                 .execute(&self.pool)
                 .await?;
         }
@@ -1870,6 +1905,7 @@ impl KeyStore {
             r#"
             INSERT INTO request_logs (
                 api_key_id,
+                auth_token_id,
                 method,
                 path,
                 query,
@@ -1882,10 +1918,11 @@ impl KeyStore {
                 forwarded_headers,
                 dropped_headers,
                 created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
         )
         .bind(entry.key_id)
+        .bind(entry.auth_token_id)
         .bind(entry.method.as_str())
         .bind(entry.path)
         .bind(entry.query)
@@ -2085,6 +2122,65 @@ impl KeyStore {
             last_activity,
         })
     }
+
+    async fn fetch_success_breakdown(
+        &self,
+        month_since: i64,
+        day_since: i64,
+    ) -> Result<SuccessBreakdown, ProxyError> {
+        let row = sqlx::query(
+            r#"
+            SELECT
+              COALESCE(SUM(CASE WHEN result_status = ? AND created_at >= ? THEN 1 ELSE 0 END), 0) AS monthly_success,
+              COALESCE(SUM(CASE WHEN result_status = ? AND created_at >= ? THEN 1 ELSE 0 END), 0) AS daily_success
+            FROM request_logs
+            "#,
+        )
+        .bind(OUTCOME_SUCCESS)
+        .bind(month_since)
+        .bind(OUTCOME_SUCCESS)
+        .bind(day_since)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(SuccessBreakdown {
+            monthly_success: row.try_get("monthly_success")?,
+            daily_success: row.try_get("daily_success")?,
+        })
+    }
+
+    async fn fetch_token_success_failure(
+        &self,
+        token_id: &str,
+        month_since: i64,
+        day_since: i64,
+    ) -> Result<(i64, i64, i64), ProxyError> {
+        let row = sqlx::query(
+            r#"
+            SELECT
+              COALESCE(SUM(CASE WHEN result_status = ? AND created_at >= ? THEN 1 ELSE 0 END), 0) AS monthly_success,
+              COALESCE(SUM(CASE WHEN result_status = ? AND created_at >= ? THEN 1 ELSE 0 END), 0) AS daily_success,
+              COALESCE(SUM(CASE WHEN result_status = ? AND created_at >= ? THEN 1 ELSE 0 END), 0) AS daily_failure
+            FROM request_logs
+            WHERE auth_token_id = ?
+            "#,
+        )
+        .bind(OUTCOME_SUCCESS)
+        .bind(month_since)
+        .bind(OUTCOME_SUCCESS)
+        .bind(day_since)
+        .bind(OUTCOME_ERROR)
+        .bind(day_since)
+        .bind(token_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok((
+            row.try_get("monthly_success")?,
+            row.try_get("daily_success")?,
+            row.try_get("daily_failure")?,
+        ))
+    }
 }
 
 #[derive(Debug)]
@@ -2095,6 +2191,7 @@ struct ApiKeyLease {
 
 struct AttemptLog<'a> {
     key_id: &'a str,
+    auth_token_id: Option<&'a str>,
     method: &'a Method,
     path: &'a str,
     query: Option<&'a str>,
@@ -2116,6 +2213,7 @@ pub struct ProxyRequest {
     pub query: Option<String>,
     pub headers: HeaderMap,
     pub body: Bytes,
+    pub auth_token_id: Option<String>,
 }
 
 /// 透传响应。
@@ -2169,6 +2267,13 @@ pub struct ProxySummary {
     pub active_keys: i64,
     pub exhausted_keys: i64,
     pub last_activity: Option<i64>,
+}
+
+/// Successful request counters for public metrics.
+#[derive(Debug, Clone)]
+pub struct SuccessBreakdown {
+    pub monthly_success: i64,
+    pub daily_success: i64,
 }
 
 fn random_string(alphabet: &[u8], len: usize) -> String {
@@ -2245,6 +2350,13 @@ fn start_of_month(now: chrono::DateTime<Utc>) -> chrono::DateTime<Utc> {
     Utc.with_ymd_and_hms(now.year(), now.month(), 1, 0, 0, 0)
         .single()
         .expect("valid start of month")
+}
+
+fn start_of_day(now: chrono::DateTime<Utc>) -> chrono::DateTime<Utc> {
+    now.date_naive()
+        .and_hms_opt(0, 0, 0)
+        .expect("valid start of day")
+        .and_utc()
 }
 
 fn normalize_timestamp(timestamp: i64) -> Option<i64> {

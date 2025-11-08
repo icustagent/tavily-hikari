@@ -40,6 +40,367 @@ button {
   gap: 24px;
 }
 
+.public-home {
+  align-items: stretch;
+}
+
+.public-home-hero {
+  text-align: center;
+  padding: 48px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.public-home-hero h1 {
+  margin: 0;
+  font-size: 2.4rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #111827;
+}
+
+.hero-title {
+  background: linear-gradient(120deg, #6366f1, #8b5cf6 48%, #ec4899);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.public-home-tagline {
+  margin: 0;
+  color: #4b5563;
+  font-size: 1.05rem;
+}
+
+.public-home-description {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #475569;
+  line-height: 1.6;
+}
+
+.public-home-actions {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 24px;
+}
+
+.hero-metrics {
+  margin-top: 24px;
+  padding: 0;
+}
+
+.token-input-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.token-label {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #1f2937;
+  white-space: nowrap;
+  margin: 0;
+}
+
+.token-input-row {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.token-input {
+  width: 360px;
+  padding: 10px 44px 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.18);
+  font-family: 'SF Mono', 'Fira Mono', Consolas, 'Courier New', monospace;
+  font-size: 0.95rem;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.token-input-shell {
+  position: relative;
+  /* Keep copy button close to input: do not stretch */
+  flex: 0 0 auto;
+  display: inline-block;
+}
+
+
+.token-visibility-button {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.token-visibility-button img {
+  width: 22px;
+  height: 22px;
+}
+
+.button-secondary {
+  background: #111827;
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.25);
+}
+
+.button-secondary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.3);
+}
+
+.token-copy-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.token-copy-button img {
+  width: 16px;
+  height: 16px;
+}
+
+.token-copy-button.success {
+  background: #16a34a;
+}
+
+.token-input:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18);
+}
+
+.public-home-guide {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.guide-tabs {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.guide-tab {
+  padding: 8px 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  background: rgba(255, 255, 255, 0.9);
+  color: #4c51bf;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.guide-tab.active {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  box-shadow: 0 8px 20px rgba(99, 102, 241, 0.25);
+}
+
+.guide-tab:hover {
+  transform: translateY(-1px);
+}
+
+.guide-panel {
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.05);
+  background: rgba(255, 255, 255, 0.92);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.guide-panel h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.guide-panel ol {
+  margin: 0;
+  padding-left: 16px;
+  color: #334155;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.guide-panel code {
+  background: rgba(15, 23, 42, 0.08);
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-family: 'SF Mono', 'Fira Mono', Consolas, 'Courier New', monospace;
+}
+
+.guide-sample {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.guide-sample-title {
+  margin: 0;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.guide-code {
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.92);
+  color: #f8fafc;
+  overflow-x: auto;
+  font-family: 'JetBrains Mono', 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  font-size: 0.85rem;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.guide-reference {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
+.guide-reference a {
+  color: #c4b5fd;
+  text-decoration: none;
+}
+
+.guide-reference a:hover {
+  text-decoration: underline;
+}
+
+.update-banner {
+  padding: 18px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  border-left: 4px solid #38bdf8;
+}
+
+.update-banner-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.update-banner-text strong {
+  font-size: 0.95rem;
+  color: #0f172a;
+}
+
+.update-banner-text span {
+  color: #475569;
+  font-size: 0.85rem;
+}
+
+.update-banner-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.public-home-footer {
+  margin-top: 8px;
+  padding: 18px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 0.9rem;
+}
+
+.public-home-footer a {
+  color: #2563eb;
+  text-decoration: none;
+}
+
+.public-home-footer a:hover {
+  text-decoration: underline;
+}
+
+.footer-version {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #475569;
+}
+
+.footer-gh {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.footer-gh img {
+  width: 20px;
+  height: 20px;
+}
+
+.guide-code[data-lang='json']::before,
+.guide-code[data-lang='toml']::before,
+.guide-code[data-lang='bash']::before {
+  content: attr(data-lang);
+  display: inline-block;
+  margin-bottom: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.2);
+  color: rgba(226, 232, 240, 0.85);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+}
+
+.guide-code code {
+  display: block;
+  white-space: pre;
+}
+
+.guide-code .hl-key {
+  color: #a5b4fc;
+}
+
+.guide-code .hl-string {
+  color: #fbcfe8;
+}
+
+.guide-code .hl-comment {
+  color: #9ca3af;
+  font-style: italic;
+}
+
+.public-home-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.public-home-metrics-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .surface {
   background: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(10px);
@@ -245,6 +606,7 @@ button:disabled {
   font-size: 1.9rem;
   font-weight: 700;
   color: #111827;
+  font-family: 'JetBrains Mono', 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
 }
 
 .metric-subtitle {
@@ -799,4 +1161,87 @@ tbody .log-details-row:hover {
   .kv-item {
     grid-template-columns: 96px 1fr;
   }
+}
+.access-panel {
+  margin-top: 16px;
+}
+
+.access-panel-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.access-token-box {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.access-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.access-stat {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 14px;
+  background: rgba(248, 250, 252, 0.92);
+  padding: 14px 18px;
+  min-width: 160px;
+  flex: 1 1 160px;
+}
+
+.access-stat h4 {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #475569;
+}
+
+.access-stat p {
+  margin: 8px 0 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #0f172a;
+  font-family: 'JetBrains Mono', 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+}
+
+/* Rolling number styles */
+.rolling-number {
+  display: inline-flex;
+  align-items: flex-end;
+  line-height: 1;
+}
+.rolling-number .rn-probe {
+  position: absolute;
+  visibility: hidden;
+  height: 1em;
+  line-height: 1em;
+}
+.rolling-number .rn-sep {
+  padding: 0 1px;
+}
+.rolling-number .rn-col {
+  position: relative;
+  overflow: hidden;
+  width: 0.62em; /* tighter monospace width */
+  height: 1em;
+}
+.rolling-number .rn-strip {
+  display: flex;
+  flex-direction: column;
+  transition: transform 420ms cubic-bezier(0.25, 0.8, 0.25, 1);
+  will-change: transform;
+}
+.rolling-number .rn-col.rn-down .rn-strip {
+  transition: transform 420ms cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+.rolling-number .rn-digit {
+  display: block;
+  height: 1em;
+  line-height: 1em;
 }

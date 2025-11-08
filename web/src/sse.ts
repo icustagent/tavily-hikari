@@ -4,7 +4,7 @@
 // function that closes the EventSource.
 
 export function subscribeToSseOpen(onOpen: () => void): () => void {
-  const es = new EventSource('/api/events');
+  const es = new EventSource('/api/public/events');
 
   const handleOpen = () => {
     try {
