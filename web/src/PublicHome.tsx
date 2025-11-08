@@ -471,9 +471,11 @@ function PublicHome(): JSX.Element {
           </div>
         </div>
         {isAdmin && (
-          <button type="button" className="button button-primary" onClick={() => { window.location.href = '/admin' }}>
-            Open Admin Dashboard
-          </button>
+          <div className="public-home-actions">
+            <button type="button" className="button button-primary" onClick={() => { window.location.href = '/admin' }}>
+              Open Admin Dashboard
+            </button>
+          </div>
         )}
       </section>
       <section className="surface panel access-panel">

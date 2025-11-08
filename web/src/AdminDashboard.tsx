@@ -162,6 +162,7 @@ function AdminDashboard(): JSX.Element {
   const [version, setVersion] = useState<{ backend: string; frontend: string } | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const secretCacheRef = useRef<Map<string, string>>(new Map())
+  const tokenSecretCacheRef = useRef<Map<string, string>>(new Map())
   const [copyState, setCopyState] = useState<Map<string, 'loading' | 'copied'>>(() => new Map())
   const [expandedLogs, setExpandedLogs] = useState<Set<number>>(() => new Set())
   const [newKey, setNewKey] = useState('')
@@ -198,6 +199,34 @@ function AdminDashboard(): JSX.Element {
     })
   }, [])
 
+  const copyToClipboard = useCallback(async (value: string) => {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value)
+      return
+    }
+
+    const textarea = document.createElement('textarea')
+    textarea.value = value
+    textarea.style.position = 'fixed'
+    textarea.style.opacity = '0'
+    textarea.style.left = '-9999px'
+    document.body.appendChild(textarea)
+    textarea.focus()
+    textarea.select()
+    document.execCommand('copy')
+    document.body.removeChild(textarea)
+  }, [])
+
+  const resolveTokenSecret = useCallback(async (id: string) => {
+    let secret = tokenSecretCacheRef.current.get(id)
+    if (!secret) {
+      const result = await fetchTokenSecret(id)
+      secret = result.token
+      tokenSecretCacheRef.current.set(id, secret)
+    }
+    return secret
+  }, [])
+
   const handleCopySecret = useCallback(
     async (id: string, stateKey: string) => {
       updateCopyState(stateKey, 'loading')
@@ -209,24 +238,6 @@ function AdminDashboard(): JSX.Element {
           secretCacheRef.current.set(id, secret)
         }
 
-        const copyToClipboard = async (value: string) => {
-          if (navigator.clipboard?.writeText) {
-            await navigator.clipboard.writeText(value)
-            return
-          }
-
-          const textarea = document.createElement('textarea')
-          textarea.value = value
-          textarea.style.position = 'fixed'
-          textarea.style.opacity = '0'
-          textarea.style.left = '-9999px'
-          document.body.appendChild(textarea)
-          textarea.focus()
-          textarea.select()
-          document.execCommand('copy')
-          document.body.removeChild(textarea)
-        }
-
         await copyToClipboard(secret)
         updateCopyState(stateKey, 'copied')
         window.setTimeout(() => updateCopyState(stateKey, null), 2000)
@@ -236,7 +247,7 @@ function AdminDashboard(): JSX.Element {
         updateCopyState(stateKey, null)
       }
     },
-    [setError, updateCopyState],
+    [copyToClipboard, setError, updateCopyState],
   )
 
   const loadData = useCallback(
@@ -514,13 +525,28 @@ function AdminDashboard(): JSX.Element {
   const handleCopyToken = async (id: string, stateKey: string) => {
     updateCopyState(stateKey, 'loading')
     try {
-      const { token } = await fetchTokenSecret(id)
-      await navigator.clipboard?.writeText(token)
+      const token = await resolveTokenSecret(id)
+      await copyToClipboard(token)
       updateCopyState(stateKey, 'copied')
       window.setTimeout(() => updateCopyState(stateKey, null), 2000)
     } catch (err) {
       console.error(err)
       setError(err instanceof Error ? err.message : 'Failed to copy token')
+      updateCopyState(stateKey, null)
+    }
+  }
+
+  const handleShareToken = async (id: string, stateKey: string) => {
+    updateCopyState(stateKey, 'loading')
+    try {
+      const token = await resolveTokenSecret(id)
+      const shareUrl = `${window.location.origin}/#${encodeURIComponent(token)}`
+      await copyToClipboard(shareUrl)
+      updateCopyState(stateKey, 'copied')
+      window.setTimeout(() => updateCopyState(stateKey, null), 2000)
+    } catch (err) {
+      console.error(err)
+      setError(err instanceof Error ? err.message : 'Failed to copy share link')
       updateCopyState(stateKey, null)
     }
   }
@@ -749,6 +775,8 @@ function AdminDashboard(): JSX.Element {
                 {tokens.map((t) => {
                   const stateKey = copyStateKey('tokens', t.id)
                   const state = copyState.get(stateKey)
+                  const shareStateKey = copyStateKey('tokens', `${t.id}:share`)
+                  const shareState = copyState.get(shareStateKey)
                   return (
                     <tr key={t.id}>
                       <td>
@@ -786,6 +814,16 @@ function AdminDashboard(): JSX.Element {
                               disabled={state === 'loading'}
                             >
                               <Icon icon={state === 'copied' ? 'mdi:check' : 'mdi:content-copy'} width={18} height={18} />
+                            </button>
+                            <button
+                              type="button"
+                              className={`icon-button${shareState === 'copied' ? ' icon-button-success' : ''}${shareState === 'loading' ? ' icon-button-loading' : ''}`}
+                              title="Copy share link"
+                              aria-label="Copy share link"
+                              onClick={() => void handleShareToken(t.id, shareStateKey)}
+                              disabled={shareState === 'loading'}
+                            >
+                              <Icon icon={shareState === 'copied' ? 'mdi:check' : 'mdi:share-variant'} width={18} height={18} />
                             </button>
                             <button
                               type="button"
