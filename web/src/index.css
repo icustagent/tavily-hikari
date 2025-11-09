@@ -497,6 +497,12 @@ button {
   gap: 16px;
 }
 
+.admin-language-switcher {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
 .user-badge {
   display: inline-flex;
   align-items: center;
