@@ -88,6 +88,8 @@ button {
 
 .language-switcher {
   display: inline-block;
+  position: relative;
+  z-index: 10;
 }
 
 .language-switcher-trigger {
@@ -119,6 +121,10 @@ button {
   padding: 8px;
   min-width: 160px;
   display: none !important;
+  position: absolute;
+  right: 0;
+  margin-top: 6px;
+  z-index: 20;
 }
 
 .language-switcher.dropdown-open .language-switcher-menu {
@@ -494,6 +500,8 @@ button {
   align-items: center;
   justify-content: space-between;
   padding: 20px 24px;
+  position: relative;
+  z-index: 30;
 }
 
 .header-right {
