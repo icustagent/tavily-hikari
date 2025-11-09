@@ -595,7 +595,7 @@ export const translations: Record<Language, TranslationShape> = {
           subtitle: '活跃 Tavily API Key / 总密钥（含本月耗尽）',
         },
       },
-      adminButton: '打开后台面板',
+      adminButton: '打开管理员面板',
       accessPanel: {
         title: '令牌使用统计',
         stats: {
