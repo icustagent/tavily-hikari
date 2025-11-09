@@ -118,6 +118,11 @@ button {
 .language-switcher-menu {
   padding: 8px;
   min-width: 160px;
+  display: none !important;
+}
+
+.language-switcher.dropdown-open .language-switcher-menu {
+  display: flex !important;
 }
 
 .language-option {

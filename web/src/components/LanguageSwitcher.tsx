@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import { Icon } from '@iconify/react'
 import { useLanguage, useTranslate, languageOptions, type Language } from '../i18n'
 
@@ -10,18 +11,53 @@ function LanguageSwitcher(): JSX.Element {
   const { language, setLanguage } = useLanguage()
   const strings = useTranslate()
   const activeMeta = LANGUAGE_META[language]
+  const dropdownRef = useRef<HTMLDivElement | null>(null)
+  const [isOpen, setIsOpen] = useState(false)
+
+  useEffect(() => {
+    if (!isOpen) return
+    if (typeof document === 'undefined') return
+
+    const handleOutsideClick = (event: MouseEvent) => {
+      const dropdownElement = dropdownRef.current
+      if (!dropdownElement) return
+      if (dropdownElement.contains(event.target as Node)) return
+      setIsOpen(false)
+    }
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleOutsideClick)
+    document.addEventListener('keydown', handleEscape)
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick)
+      document.removeEventListener('keydown', handleEscape)
+    }
+  }, [isOpen])
+
+  const toggleDropdown = () => {
+    setIsOpen((prev) => !prev)
+  }
 
   const handleSelect = (next: Language) => {
+    setIsOpen(false)
     if (next === language) return
     setLanguage(next)
   }
 
   return (
-    <div className="dropdown dropdown-end language-switcher">
-      <label
-        tabIndex={0}
+    <div ref={dropdownRef} className={`dropdown dropdown-end language-switcher${isOpen ? ' dropdown-open' : ''}`}>
+      <button
+        type="button"
         className="btn btn-ghost btn-sm language-switcher-trigger"
         aria-label={`${strings.common.languageLabel}: ${strings.common[language === 'en' ? 'englishLabel' : 'chineseLabel']}`}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        onClick={toggleDropdown}
       >
         <span className="sr-only">{strings.common.languageLabel}</span>
         <span className="language-flag" aria-hidden="true">
@@ -29,7 +65,7 @@ function LanguageSwitcher(): JSX.Element {
         </span>
         <span className="language-short">{activeMeta.short}</span>
         <Icon icon="mdi:chevron-down" width={16} height={16} aria-hidden="true" />
-      </label>
+      </button>
       <ul tabIndex={0} className="dropdown-content menu menu-sm bg-base-100 rounded-box shadow language-switcher-menu">
         {languageOptions.map((option) => {
           const meta = LANGUAGE_META[option.value]

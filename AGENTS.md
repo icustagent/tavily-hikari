@@ -48,19 +48,16 @@
 - Default high ports: backend `58087`, frontend `55173` (increment within high range if needed).
 
 - Backend (Rust):
-  - Foreground (debug): `RUST_LOG=info cargo run -- --bind 127.0.0.1 --port 58087 --db-path tavily_proxy.db`
-  - Background: `nohup env RUST_LOG=info cargo run -- --bind 127.0.0.1 --port 58087 --db-path tavily_proxy.db > logs/backend.dev.log 2>&1 & echo $! > logs/backend.pid`
-  - Time-limited check: `timeout 120s RUST_LOG=info cargo run -- --bind 127.0.0.1 --port 58087 --db-path tavily_proxy.db --static-dir web/dist`
-    - Always prefer wrapping foreground runs in `timeout` (adjust seconds as needed) so automation never blocks when ports are busy or startup stalls.
+  - **Always** use `scripts/start-backend-dev.sh` to launch the dev server (respects env vars like `TAVILY_API_KEYS`, `TAVILY_UPSTREAM`, `DEV_OPEN_ADMIN`). The script handles `logs/backend.dev.log` + `logs/backend.pid` automatically.
+  - For a one-off smoke check, `timeout 120s scripts/start-backend-dev.sh` can be used, but do not hand-roll `cargo run` commands in this repo.
 
 - Frontend (Vite):
-  - Foreground (debug): `cd web && npm ci && npm run dev -- --host 127.0.0.1 --port 55173`
-  - Background: `cd web && nohup npm run dev -- --host 127.0.0.1 --port 55173 > ../logs/web.dev.log 2>&1 & echo $! > ../logs/web.pid`
-  - Build for static serving: `cd web && npm run build` then run backend with `--static-dir web/dist`.
+  - **Always** use `scripts/start-frontend-dev.sh` to bring up the Vite dev server (automatically installs dependencies if `node_modules` is missing, and records PID/logs under `logs/`).
+  - Build for static serving: `cd web && npm run build`, then run backend with `scripts/start-backend-dev.sh` so it picks up `web/dist`.
 
 - Stop background servers:
-  - Backend: `kill $(cat logs/backend.pid)`
-  - Frontend: `kill $(cat logs/web.pid)`
+  - Backend: `kill $(cat logs/backend.pid)` (the script recreates PID file on next start)
+  - Frontend: `kill $(cat logs/frontend.pid)`
 
 - Logs & notes:
   - `tail -f logs/backend.dev.log` and `tail -f logs/web.dev.log` to monitor runtime.
