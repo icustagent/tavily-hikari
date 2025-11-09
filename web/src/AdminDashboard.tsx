@@ -1,5 +1,6 @@
 import { Icon } from '@iconify/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import LanguageSwitcher from './components/LanguageSwitcher'
 import {
   fetchApiKeys,
   fetchApiKeySecret,
@@ -711,6 +712,9 @@ function AdminDashboard(): JSX.Element {
           <p>Monitor API key allocation, quota health, and recent proxy activity.</p>
         </div>
         <div className="header-right">
+          <div className="admin-language-switcher">
+            <LanguageSwitcher />
+          </div>
           {displayName && (
             <div className={`user-badge${isAdmin ? ' user-badge-admin' : ''}`}>
               {isAdmin && <Icon icon="mdi:crown-outline" className="user-badge-icon" aria-hidden="true" />}
