@@ -1,6 +1,7 @@
 import { Icon } from '@iconify/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import LanguageSwitcher from './components/LanguageSwitcher'
+import TokenDetail from './pages/TokenDetail'
 import { useTranslate, type AdminTranslations } from './i18n'
 import {
   fetchApiKeys,
@@ -31,6 +32,12 @@ import {
 function parseHashForKeyId(): string | null {
   const hash = location.hash || ''
   const m = hash.match(/^#\/keys\/([^\/?#]+)/)
+  return m ? decodeURIComponent(m[1]) : null
+}
+
+function parseHashForTokenId(): string | null {
+  const hash = location.hash || ''
+  const m = hash.match(/^#\/tokens\/([^\/?#]+)/)
   return m ? decodeURIComponent(m[1]) : null
 }
 
@@ -137,9 +144,11 @@ function formatErrorMessage(log: RequestLog, errorsStrings: AdminTranslations['l
 }
 
 function AdminDashboard(): JSX.Element {
-  const [route, setRoute] = useState<{ name: 'home' } | { name: 'key'; id: string }>(() => {
-    const id = parseHashForKeyId()
-    return id ? { name: 'key', id } : { name: 'home' }
+  const [route, setRoute] = useState<{ name: 'home' } | { name: 'key'; id: string } | { name: 'token'; id: string }>(() => {
+    const keyId = parseHashForKeyId()
+    if (keyId) return { name: 'key', id: keyId }
+    const tokenId = parseHashForTokenId()
+    return tokenId ? { name: 'token', id: tokenId } : { name: 'home' }
   })
   const translations = useTranslate()
   const adminStrings = translations.admin
@@ -380,8 +389,13 @@ function AdminDashboard(): JSX.Element {
 
   useEffect(() => {
     const onHash = () => {
-      const id = parseHashForKeyId()
-      setRoute(id ? { name: 'key', id } : { name: 'home' })
+      const keyId = parseHashForKeyId()
+      if (keyId) {
+        setRoute({ name: 'key', id: keyId })
+        return
+      }
+      const tokenId = parseHashForTokenId()
+      setRoute(tokenId ? { name: 'token', id: tokenId } : { name: 'home' })
     }
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
@@ -398,6 +412,11 @@ function AdminDashboard(): JSX.Element {
   const navigateKey = (id: string) => {
     location.hash = `#/keys/${encodeURIComponent(id)}`
     setRoute({ name: 'key', id })
+  }
+
+  const navigateToken = (id: string) => {
+    location.hash = `#/tokens/${encodeURIComponent(id)}`
+    setRoute({ name: 'token', id })
   }
 
   const handleManualRefresh = () => {
@@ -703,6 +722,9 @@ function AdminDashboard(): JSX.Element {
   if (route.name === 'key') {
     return <KeyDetails id={route.id} onBack={navigateHome} />
   }
+  if (route.name === 'token') {
+    return <TokenDetail id={route.id} onBack={navigateHome} />
+  }
 
   return (
     <>
@@ -786,7 +808,14 @@ function AdminDashboard(): JSX.Element {
                     <tr key={t.id}>
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span title={tokenStrings.table.id} className="link-button"><code>{t.id}</code></span>
+                          <button
+                            type="button"
+                            title={tokenStrings.table.id}
+                            className="link-button"
+                            onClick={() => navigateToken(t.id)}
+                          >
+                            <code>{t.id}</code>
+                          </button>
                           <span
                             className="token-status-slot"
                             aria-hidden={t.enabled ? true : undefined}
@@ -820,7 +849,7 @@ function AdminDashboard(): JSX.Element {
                             >
                               <Icon icon={state === 'copied' ? 'mdi:check' : 'mdi:content-copy'} width={18} height={18} />
                             </button>
-                            <button
+                          <button
                               type="button"
                               className={`icon-button${shareState === 'copied' ? ' icon-button-success' : ''}${shareState === 'loading' ? ' icon-button-loading' : ''}`}
                               title={tokenStrings.actions.share}
@@ -829,6 +858,15 @@ function AdminDashboard(): JSX.Element {
                               disabled={shareState === 'loading'}
                             >
                               <Icon icon={shareState === 'copied' ? 'mdi:check' : 'mdi:share-variant'} width={18} height={18} />
+                            </button>
+                            <button
+                              type="button"
+                              className="icon-button"
+                              title={keyStrings.actions.details}
+                              aria-label={keyStrings.actions.details}
+                              onClick={() => navigateToken(t.id)}
+                            >
+                              <Icon icon="mdi:eye-outline" width={18} height={18} />
                             </button>
                             <button
                               type="button"
