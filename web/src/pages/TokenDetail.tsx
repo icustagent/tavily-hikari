@@ -1,6 +1,5 @@
 import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { Icon } from '@iconify/react'
-import { useParams, Link } from '@tanstack/react-router'
 
 type Period = 'day' | 'week' | 'month'
 
@@ -185,10 +184,14 @@ function sanitizeInput(period: Period, raw: string): string {
   return formatPeriodInput(period, start)
 }
 
-export default function TokenDetail(): JSX.Element {
-  const { id } = useParams({ from: '/tokens/$id' })
+export default function TokenDetail({ id, onBack }: { id: string; onBack?: () => void }): JSX.Element {
   const [info, setInfo] = useState<TokenDetailInfo | null>(null)
   const [summary, setSummary] = useState<TokenSummary | null>(null)
+  const [quickStats, setQuickStats] = useState<{
+    day: TokenSummary | null
+    month: TokenSummary | null
+    total: TokenSummary | null
+  }>({ day: null, month: null, total: null })
   const [period, setPeriod] = useState<Period>('month')
   const [sinceInput, setSinceInput] = useState<string>('')
   const [debouncedSinceInput, setDebouncedSinceInput] = useState<string>('')
@@ -287,6 +290,26 @@ export default function TokenDetail(): JSX.Element {
     }
   }
 
+  async function loadQuickStats() {
+    const now = new Date()
+    const dayStart = startOfDay(now.getTime())
+    const monthStart = startOfMonth(now.getTime())
+    const sinceDay = toIso(dayStart)
+    const sinceMonth = toIso(monthStart)
+    const sinceEpoch = '1970-01-01T00:00:00+00:00'
+    const untilNow = toIso(now)
+    try {
+      const [d, m, t] = await Promise.all([
+        getJson<TokenSummary>(`/api/tokens/${encodeURIComponent(id)}/metrics?since=${encodeURIComponent(sinceDay)}&until=${encodeURIComponent(untilNow)}`),
+        getJson<TokenSummary>(`/api/tokens/${encodeURIComponent(id)}/metrics?since=${encodeURIComponent(sinceMonth)}&until=${encodeURIComponent(untilNow)}`),
+        getJson<TokenSummary>(`/api/tokens/${encodeURIComponent(id)}/metrics?since=${encodeURIComponent(sinceEpoch)}&until=${encodeURIComponent(untilNow)}`),
+      ])
+      setQuickStats({ day: d, month: m, total: t })
+    } catch {
+      // ignore quick stats errors to avoid blocking page
+    }
+  }
+
   // initial load (details + metrics + first page logs)
   useEffect(() => {
     let cancelled = false
@@ -307,6 +330,7 @@ export default function TokenDetail(): JSX.Element {
         setTotal(logsRes.total)
         setExpandedLogs(new Set())
         setError(null)
+        void loadQuickStats()
       } catch (e) {
         if (cancelled) return
         setError(e instanceof Error ? e.message : 'Failed to load token details')
@@ -340,6 +364,8 @@ export default function TokenDetail(): JSX.Element {
             })
             .catch(() => {})
         }
+        // Refresh quick stats opportunistically
+        void loadQuickStats()
       } catch {}
     })
     es.onerror = () => { /* ignore, fallback to polling via initial load */ }
@@ -387,7 +413,10 @@ export default function TokenDetail(): JSX.Element {
           <h1>Access Token Detail</h1>
           <div className="subtitle">Token <code>{id}</code></div>
         </div>
-        <Link to="/" className="button">Back</Link>
+        <button type="button" className="button" onClick={() => (onBack ? onBack() : window.history.back())}>
+          <Icon icon="mdi:arrow-left" width={18} height={18} />
+          &nbsp;Back
+        </button>
       </section>
 
       {error && <div className="surface error-banner" role="alert">{error}</div>}
@@ -414,6 +443,41 @@ export default function TokenDetail(): JSX.Element {
             value={info?.note ? <span className="token-info-note" title={info.note}>{info.note}</span> : '—'}
           />
         </div>
+      </section>
+
+      <section className="surface panel">
+        <div className="panel-header">
+          <div>
+            <h2>Quick Stats</h2>
+            <p className="panel-description">24 hours, this month, and all-time. Shown as success/total.</p>
+          </div>
+        </div>
+        <section className="quick-stats-grid">
+          {(!quickStats.day && !quickStats.month && !quickStats.total) ? (
+            <div className="empty-state" style={{ gridColumn: '1 / -1' }}>Loading…</div>
+          ) : (
+            <>
+              <div className="metric-card quick-stats-card">
+                <h3>24 Hours</h3>
+                <div className="metric-value">
+                  {quickStats.day ? `${formatNumber(quickStats.day.success_count)} / ${formatNumber(quickStats.day.total_requests)}` : '—'}
+                </div>
+              </div>
+              <div className="metric-card quick-stats-card">
+                <h3>This Month</h3>
+                <div className="metric-value">
+                  {quickStats.month ? `${formatNumber(quickStats.month.success_count)} / ${formatNumber(quickStats.month.total_requests)}` : '—'}
+                </div>
+              </div>
+              <div className="metric-card quick-stats-card">
+                <h3>All Time</h3>
+                <div className="metric-value">
+                  {quickStats.total ? `${formatNumber(quickStats.total.success_count)} / ${formatNumber(quickStats.total.total_requests)}` : '—'}
+                </div>
+              </div>
+            </>
+          )}
+        </section>
       </section>
 
       <section className="surface panel">
@@ -477,7 +541,7 @@ export default function TokenDetail(): JSX.Element {
             <span>{warning}</span>
           </div>
         )}
-        <div className="stats stats-vertical lg:stats-horizontal shadow token-stats">
+        <div className="token-stats">
           <MetricCard label="Requests" value={formatNumber(summary?.total_requests ?? 0)} />
           <MetricCard label="Success" value={formatNumber(summary?.success_count ?? 0)} />
           <MetricCard label="Errors" value={formatNumber(summary?.error_count ?? 0)} />
@@ -561,7 +625,7 @@ export default function TokenDetail(): JSX.Element {
 
 function MetricCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="stat token-stat">
+    <div className="token-stat">
       <div className="stat-title">{label}</div>
       <div className="stat-value">{value}</div>
     </div>
