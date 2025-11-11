@@ -267,6 +267,13 @@ fn spawn_quota_sync_scheduler(state: Arc<AppState>) {
                             .scheduled_job_finish(job_id, "error", Some(&msg))
                             .await;
                     }
+                    Err(ProxyError::UsageHttp { status, body }) => {
+                        let msg = format!("usage_http {status}: {body}");
+                        let _ = state
+                            .proxy
+                            .scheduled_job_finish(job_id, "error", Some(&msg))
+                            .await;
+                    }
                     Err(err) => {
                         let _ = state
                             .proxy
@@ -875,12 +882,36 @@ async fn post_sync_key_usage(
             }));
             Ok((StatusCode::UNPROCESSABLE_ENTITY, body).into_response())
         }
-        Err(err) => {
+        Err(ProxyError::UsageHttp { status, body }) => {
+            let detail = format!("Tavily usage request failed with {status}: {body}");
+            let http_status = match status {
+                reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN => {
+                    StatusCode::UNPROCESSABLE_ENTITY
+                }
+                s if s.is_client_error() => StatusCode::BAD_REQUEST,
+                _ => StatusCode::BAD_GATEWAY,
+            };
             let _ = state
                 .proxy
-                .scheduled_job_finish(job_id, "error", Some(&err.to_string()))
+                .scheduled_job_finish(job_id, "error", Some(&detail))
                 .await;
-            Err(StatusCode::BAD_GATEWAY)
+            let body = Json(json!({
+                "error": "usage_http",
+                "detail": detail,
+            }));
+            Ok((http_status, body).into_response())
+        }
+        Err(err) => {
+            let reason = err.to_string();
+            let _ = state
+                .proxy
+                .scheduled_job_finish(job_id, "error", Some(&reason))
+                .await;
+            let body = Json(json!({
+                "error": "sync_failed",
+                "detail": reason,
+            }));
+            Ok((StatusCode::BAD_GATEWAY, body).into_response())
         }
     }
 }

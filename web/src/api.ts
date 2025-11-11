@@ -132,7 +132,8 @@ export async function syncApiKeyUsage(id: string): Promise<void> {
     } catch {
       message = await res.text().catch(() => '')
     }
-    throw new Error(message || `Failed to sync key usage: ${res.status}`)
+    const statusPart = ` (HTTP ${res.status})`
+    throw new Error((message ? `${message}` : 'Failed to sync key usage') + statusPart)
   }
 }
 

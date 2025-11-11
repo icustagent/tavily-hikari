@@ -480,8 +480,12 @@ impl TavilyProxy {
             .send()
             .await
             .map_err(ProxyError::Http)?;
-        let resp = resp.error_for_status().map_err(ProxyError::Http)?;
+        let status = resp.status();
         let bytes = resp.bytes().await.map_err(ProxyError::Http)?;
+        if !status.is_success() {
+            let body = String::from_utf8_lossy(&bytes).into_owned();
+            return Err(ProxyError::UsageHttp { status, body });
+        }
         let json: Value = serde_json::from_slice(&bytes)
             .map_err(|e| ProxyError::Other(format!("invalid usage json: {}", e)))?;
         let key_limit = json
@@ -2633,6 +2637,11 @@ pub enum ProxyError {
     Http(reqwest::Error),
     #[error("missing usage data: {reason}")]
     QuotaDataMissing { reason: String },
+    #[error("usage http error {status}: {body}")]
+    UsageHttp {
+        status: reqwest::StatusCode,
+        body: String,
+    },
     #[error("other error: {0}")]
     Other(String),
 }
