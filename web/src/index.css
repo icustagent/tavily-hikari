@@ -657,7 +657,10 @@ button {
   text-decoration: none;
   -webkit-appearance: none;
   appearance: none;
-  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  color: #1f2937;
 }
 
 button:disabled {
@@ -665,6 +668,14 @@ button:disabled {
   cursor: not-allowed;
   box-shadow: none;
   transform: none;
+}
+
+.button:not(.button-primary):not(.button-success):not(:disabled):hover,
+.refresh-toggle:not(:disabled):hover {
+  background: rgba(255, 255, 255, 1);
+  border-color: rgba(99, 102, 241, 0.45);
+  box-shadow: 0 6px 18px rgba(99, 102, 241, 0.18);
+  transform: translateY(-1px);
 }
 
 .button-primary {
