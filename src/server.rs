@@ -22,11 +22,12 @@ use chrono::{DateTime, Datelike, Duration as ChronoDuration, NaiveDate, TimeZone
 use futures_util::Stream;
 use reqwest::header::{HeaderMap as ReqHeaderMap, HeaderValue as ReqHeaderValue};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 type SummarySig = (i64, i64, i64, i64, i64, i64, Option<i64>);
 use std::time::Duration;
 use tavily_hikari::{
-    ApiKeyMetrics, AuthToken, ProxyRequest, ProxyResponse, ProxySummary, RequestLogRecord,
-    TavilyProxy, TokenLogRecord, TokenSummary,
+    ApiKeyMetrics, AuthToken, ProxyError, ProxyRequest, ProxyResponse, ProxySummary,
+    RequestLogRecord, TavilyProxy, TokenLogRecord, TokenSummary,
 };
 use tokio::signal;
 #[cfg(unix)]
@@ -211,20 +212,6 @@ async fn health_check() -> &'static str {
     "ok"
 }
 
-async fn mock_usage() -> (StatusCode, Json<serde_json::Value>) {
-    let payload = serde_json::json!({
-        "key": { "usage": 150, "limit": 1000 },
-        "account": {
-            "current_plan": "Bootstrap",
-            "plan_usage": 500,
-            "plan_limit": 15000,
-            "paygo_usage": 25,
-            "paygo_limit": 100
-        }
-    });
-    (StatusCode::OK, Json(payload))
-}
-
 fn random_delay_secs() -> u64 {
     use rand::Rng;
     let mut rng = rand::thread_rng();
@@ -271,6 +258,13 @@ fn spawn_quota_sync_scheduler(state: Arc<AppState>) {
                         let _ = state
                             .proxy
                             .scheduled_job_finish(job_id, "success", Some(&msg))
+                            .await;
+                    }
+                    Err(ProxyError::QuotaDataMissing { reason }) => {
+                        let msg = format!("quota_data_missing: {reason}");
+                        let _ = state
+                            .proxy
+                            .scheduled_job_finish(job_id, "error", Some(&msg))
                             .await;
                     }
                     Err(err) => {
@@ -850,7 +844,7 @@ async fn post_sync_key_usage(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     headers: HeaderMap,
-) -> Result<StatusCode, StatusCode> {
+) -> Result<Response<Body>, StatusCode> {
     if !state.dev_open_admin && !state.forward_auth.is_request_admin(&headers) {
         return Err(StatusCode::FORBIDDEN);
     }
@@ -867,7 +861,19 @@ async fn post_sync_key_usage(
                 .proxy
                 .scheduled_job_finish(job_id, "success", Some(&msg))
                 .await;
-            Ok(StatusCode::NO_CONTENT)
+            Ok(StatusCode::NO_CONTENT.into_response())
+        }
+        Err(ProxyError::QuotaDataMissing { reason }) => {
+            let msg = format!("quota_data_missing: {reason}");
+            let _ = state
+                .proxy
+                .scheduled_job_finish(job_id, "error", Some(&msg))
+                .await;
+            let body = Json(json!({
+                "error": "quota_data_missing",
+                "detail": reason,
+            }));
+            Ok((StatusCode::UNPROCESSABLE_ENTITY, body).into_response())
         }
         Err(err) => {
             let _ = state
@@ -1361,8 +1367,6 @@ pub async fn serve(
 
     let mut router = Router::new()
         .route("/health", get(health_check))
-        // Dev-only mock usage endpoint; safe default when usage_base points to this server
-        .route("/usage", get(mock_usage))
         .route("/api/debug/headers", get(debug_headers))
         .route("/api/debug/is-admin", get(debug_is_admin))
         .route("/api/debug/forward-auth", get(get_forward_auth_debug))

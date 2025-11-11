@@ -1497,6 +1497,17 @@ function KeyDetails({ id, onBack }: { id: string; onBack: () => void }): JSX.Ele
     void load()
   }, [load])
 
+  const syncUsage = useCallback(async () => {
+    try {
+      setError(null)
+      await syncApiKeyUsage(id)
+      await load()
+    } catch (err) {
+      console.error(err)
+      setError(err instanceof Error ? err.message : adminStrings.errors.syncUsage)
+    }
+  }, [adminStrings.errors.syncUsage, id, load])
+
   const metricCards = useMemo(() => {
     if (!summary) return []
     const total = summary.total_requests
@@ -1522,7 +1533,7 @@ function KeyDetails({ id, onBack }: { id: string; onBack: () => void }): JSX.Ele
           </p>
         </div>
         <div className="controls">
-          <button type="button" className="button" onClick={() => void (async () => { try { await syncApiKeyUsage(id); await load(); } catch (e) { console.error(e) } })()}>
+          <button type="button" className="button" onClick={() => void syncUsage()}>
             <Icon icon="mdi:refresh" width={18} height={18} />
             &nbsp;Sync Usage
           </button>

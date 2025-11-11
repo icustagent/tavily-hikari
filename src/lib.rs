@@ -484,16 +484,29 @@ impl TavilyProxy {
         let bytes = resp.bytes().await.map_err(ProxyError::Http)?;
         let json: Value = serde_json::from_slice(&bytes)
             .map_err(|e| ProxyError::Other(format!("invalid usage json: {}", e)))?;
-        let limit = json
+        let key_limit = json
             .get("key")
             .and_then(|k| k.get("limit"))
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0);
-        let used = json
+            .and_then(|v| v.as_i64());
+        let key_usage = json
             .get("key")
             .and_then(|k| k.get("usage"))
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0);
+            .and_then(|v| v.as_i64());
+        let acc_limit = json
+            .get("account")
+            .and_then(|a| a.get("plan_limit"))
+            .and_then(|v| v.as_i64());
+        let acc_usage = json
+            .get("account")
+            .and_then(|a| a.get("plan_usage"))
+            .and_then(|v| v.as_i64());
+        let limit = key_limit.or(acc_limit).unwrap_or(0);
+        let used = key_usage.or(acc_usage).unwrap_or(0);
+        if limit <= 0 && used <= 0 {
+            return Err(ProxyError::QuotaDataMissing {
+                reason: "missing key/account usage fields".to_owned(),
+            });
+        }
         let remaining = (limit - used).max(0);
         let now = Utc::now().timestamp();
         self.key_store
@@ -2618,6 +2631,8 @@ pub enum ProxyError {
     Database(#[from] sqlx::Error),
     #[error("http error: {0}")]
     Http(reqwest::Error),
+    #[error("missing usage data: {reason}")]
+    QuotaDataMissing { reason: String },
     #[error("other error: {0}")]
     Other(String),
 }

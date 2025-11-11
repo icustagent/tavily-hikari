@@ -124,7 +124,16 @@ export function fetchApiKeySecret(id: string, signal?: AbortSignal): Promise<Api
 export async function syncApiKeyUsage(id: string): Promise<void> {
   const encoded = encodeURIComponent(id)
   const res = await fetch(`/api/keys/${encoded}/sync-usage`, { method: 'POST' })
-  if (!res.ok) throw new Error(`Failed to sync key usage: ${res.status}`)
+  if (!res.ok) {
+    let message = ''
+    try {
+      const data = await res.json()
+      message = (data?.detail as string) ?? (data?.error as string) ?? ''
+    } catch {
+      message = await res.text().catch(() => '')
+    }
+    throw new Error(message || `Failed to sync key usage: ${res.status}`)
+  }
 }
 
 export interface JobLogView {

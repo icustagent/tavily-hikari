@@ -243,18 +243,19 @@ interface AdminTranslationsShape {
     logsDescription: string
     logsEmpty: string
   }
-  errors: {
-    copyKey: string
-    addKey: string
-    createToken: string
-    copyToken: string
-    toggleToken: string
-    deleteToken: string
-    updateTokenNote: string
-    deleteKey: string
-    toggleKey: string
-    loadKeyDetails: string
-  }
+    errors: {
+      copyKey: string
+      addKey: string
+      createToken: string
+      copyToken: string
+      toggleToken: string
+      deleteToken: string
+      updateTokenNote: string
+      deleteKey: string
+      toggleKey: string
+      loadKeyDetails: string
+      syncUsage: string
+    }
   footer: {
     title: string
     githubAria: string
@@ -564,6 +565,7 @@ export const translations: Record<Language, TranslationShape> = {
         deleteKey: 'Failed to delete API key',
         toggleKey: 'Failed to update key status',
         loadKeyDetails: 'Failed to load details',
+        syncUsage: 'Failed to sync usage',
       },
       footer: {
         title: 'Tavily Hikari Proxy Dashboard',
@@ -849,6 +851,7 @@ export const translations: Record<Language, TranslationShape> = {
         deleteKey: '删除 API Key 失败',
         toggleKey: '更新密钥状态失败',
         loadKeyDetails: '加载详情失败',
+        syncUsage: '同步额度失败',
       },
       footer: {
         title: 'Tavily Hikari 控制台',
