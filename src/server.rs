@@ -880,16 +880,18 @@ async fn post_sync_key_usage(
                 "error": "quota_data_missing",
                 "detail": reason,
             }));
-            Ok((StatusCode::UNPROCESSABLE_ENTITY, body).into_response())
+            Ok((StatusCode::BAD_REQUEST, body).into_response())
         }
         Err(ProxyError::UsageHttp { status, body }) => {
             let detail = format!("Tavily usage request failed with {status}: {body}");
-            let http_status = match status {
-                reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN => {
-                    StatusCode::UNPROCESSABLE_ENTITY
-                }
-                s if s.is_client_error() => StatusCode::BAD_REQUEST,
-                _ => StatusCode::BAD_GATEWAY,
+            let http_status = if status == reqwest::StatusCode::UNAUTHORIZED {
+                StatusCode::UNAUTHORIZED
+            } else if status == reqwest::StatusCode::FORBIDDEN {
+                StatusCode::FORBIDDEN
+            } else if status.is_client_error() {
+                StatusCode::BAD_REQUEST
+            } else {
+                StatusCode::BAD_GATEWAY
             };
             let _ = state
                 .proxy

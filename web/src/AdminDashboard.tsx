@@ -1544,6 +1544,8 @@ function KeyDetails({ id, onBack }: { id: string; onBack: () => void }): JSX.Ele
         </div>
       </section>
 
+      {error && <div className="surface error-banner" style={{ marginTop: 8, marginBottom: 0 }}>{error}</div>}
+
       <section className="surface panel">
         <div className="panel-header">
           <div>
@@ -1575,8 +1577,6 @@ function KeyDetails({ id, onBack }: { id: string; onBack: () => void }): JSX.Ele
           )}
         </section>
       </section>
-
-      {error && <div className="surface error-banner">{error}</div>}
 
       <section className="surface panel">
         <div className="panel-header">
