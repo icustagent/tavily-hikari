@@ -61,6 +61,26 @@ interface PublicTranslations {
     metrics: string
     summary: string
   }
+  logs: {
+    title: string
+    description: string
+    empty: {
+      noToken: string
+      hint: string
+      loading: string
+      none: string
+    }
+    table: {
+      time: string
+      httpStatus: string
+      mcpStatus: string
+      result: string
+    }
+    toggles: {
+      show: string
+      hide: string
+    }
+  }
 }
 
 interface AdminTranslationsShape {
@@ -368,6 +388,26 @@ export const translations: Record<Language, TranslationShape> = {
         metrics: 'Unable to load metrics right now',
         summary: 'Unable to load summary data',
       },
+      logs: {
+        title: 'Recent Requests (last 20)',
+        description: 'Requires a valid access token to view token-specific activity.',
+        empty: {
+          noToken: 'Provide a valid access token to view the latest 20 requests for this token.',
+          hint: 'Use a link with the full token in the hash, or enter a valid token above.',
+          loading: 'Loading recent requests…',
+          none: 'No recent requests for this token.',
+        },
+        table: {
+          time: 'Time',
+          httpStatus: 'HTTP',
+          mcpStatus: 'MCP',
+          result: 'Result',
+        },
+        toggles: {
+          show: 'Show details',
+          hide: 'Hide details',
+        },
+      },
     },
     admin: {
       header: {
@@ -656,6 +696,26 @@ export const translations: Record<Language, TranslationShape> = {
       errors: {
         metrics: '暂时无法加载指标',
         summary: '暂时无法加载摘要数据',
+      },
+      logs: {
+        title: '近期请求（最近 20 条）',
+        description: '需要有效 Access Token 才可查看令牌关联的请求活动。',
+        empty: {
+          noToken: '需要有效 Access Token 才可查看最近 20 条请求。',
+          hint: '请使用携带完整 token 的链接，或在上方手动填写有效 token。',
+          loading: '正在加载近期请求…',
+          none: '该令牌暂无近期请求。',
+        },
+        table: {
+          time: '时间',
+          httpStatus: 'HTTP',
+          mcpStatus: 'MCP',
+          result: '结果',
+        },
+        toggles: {
+          show: '展开详情',
+          hide: '收起详情',
+        },
       },
     },
     admin: {

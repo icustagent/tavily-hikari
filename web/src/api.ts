@@ -21,6 +21,32 @@ export interface TokenMetrics {
   dailyFailure: number
 }
 
+// Public token logs (per access token)
+export interface PublicTokenLog {
+  id: number
+  method: string
+  path: string
+  query: string | null
+  http_status: number | null
+  mcp_status: number | null
+  result_status: string
+  error_message: string | null
+  created_at: number
+}
+
+// Server returns camelCase. Define the server shape and map to snake_case used in UI.
+interface ServerPublicTokenLog {
+  id: number
+  method: string
+  path: string
+  query: string | null
+  httpStatus: number | null
+  mcpStatus: number | null
+  resultStatus: string
+  errorMessage: string | null
+  createdAt: number
+}
+
 export interface ApiKeyStats {
   id: string
   status: string
@@ -100,6 +126,30 @@ export function fetchPublicMetrics(signal?: AbortSignal): Promise<PublicMetrics>
 export function fetchTokenMetrics(token: string, signal?: AbortSignal): Promise<TokenMetrics> {
   const params = new URLSearchParams({ token })
   return requestJson(`/api/token/metrics?${params.toString()}`, { signal })
+}
+
+export async function fetchPublicLogs(token: string, limit = 20, signal?: AbortSignal): Promise<PublicTokenLog[]> {
+  const params = new URLSearchParams({ token, limit: String(limit) })
+  const url = `/api/public/logs?${params.toString()}`
+  const res = await fetch(url, { signal })
+  if (!res.ok) {
+    const message = await res.text().catch(() => res.statusText)
+    const err = new Error(message || `Request failed with status ${res.status}`) as Error & { status?: number }
+    err.status = res.status
+    throw err
+  }
+  const data = (await res.json()) as ServerPublicTokenLog[]
+  return data.map((it) => ({
+    id: it.id,
+    method: it.method,
+    path: it.path,
+    query: it.query,
+    http_status: it.httpStatus,
+    mcp_status: it.mcpStatus,
+    result_status: it.resultStatus,
+    error_message: it.errorMessage,
+    created_at: it.createdAt,
+  }))
 }
 
 export function fetchApiKeys(signal?: AbortSignal): Promise<ApiKeyStats[]> {

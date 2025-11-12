@@ -1,13 +1,16 @@
-import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
+import React, { ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
+import { Icon } from '@iconify/react'
 import {
   fetchPublicMetrics,
   fetchProfile,
   fetchSummary,
   fetchTokenMetrics,
+  fetchPublicLogs,
   type Profile,
   type PublicMetrics,
   type Summary,
   type TokenMetrics,
+  type PublicTokenLog,
 } from './api'
 import LanguageSwitcher from './components/LanguageSwitcher'
 import useUpdateAvailable from './hooks/useUpdateAvailable'
@@ -69,6 +72,10 @@ function PublicHome(): JSX.Element {
   const [tokenVisible, setTokenVisible] = useState(false)
   const [metrics, setMetrics] = useState<PublicMetrics | null>(null)
   const [tokenMetrics, setTokenMetrics] = useState<TokenMetrics | null>(null)
+  const [publicLogs, setPublicLogs] = useState<PublicTokenLog[]>([])
+  const [expandedPublicLogs, setExpandedPublicLogs] = useState<Set<number>>(() => new Set())
+  const [publicLogsLoading, setPublicLogsLoading] = useState(false)
+  const [invalidToken, setInvalidToken] = useState(false)
   const [summary, setSummary] = useState<Summary | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -134,9 +141,21 @@ function PublicHome(): JSX.Element {
           }
         }
         if (initialToken && isFullToken(initialToken)) {
+          setInvalidToken(false)
           fetchTokenMetrics(initialToken, controller.signal)
             .then((tm) => setTokenMetrics(tm))
             .catch(() => setTokenMetrics(null))
+          setPublicLogsLoading(true)
+          fetchPublicLogs(initialToken, 20, controller.signal)
+            .then((ls) => {
+              setPublicLogs(ls)
+              setInvalidToken(false)
+            })
+            .catch((err: any) => {
+              setPublicLogs([])
+              setInvalidToken(Boolean(err?.status) && err.status >= 400 && err.status < 500)
+            })
+            .finally(() => setPublicLogsLoading(false))
         }
       })
       .finally(() => {
@@ -248,8 +267,12 @@ function PublicHome(): JSX.Element {
     window.location.hash = encodeURIComponent(normalizedHash)
 
     if (!isFullToken(next)) {
+      setTokenMetrics(null)
+      setPublicLogs([])
+      setInvalidToken(true)
       return
     }
+    setInvalidToken(false)
 
     const tokenId = extractTokenId(next)
     if (!tokenId) return
@@ -262,7 +285,40 @@ function PublicHome(): JSX.Element {
     } catch {
       /* noop */
     }
+    // Fetch token-scoped metrics and recent logs
+    void fetchTokenMetrics(next).then(setTokenMetrics).catch(() => setTokenMetrics(null))
+    setPublicLogsLoading(true)
+    void fetchPublicLogs(next, 20)
+      .then((ls) => { setPublicLogs(ls); setInvalidToken(false) })
+      .catch((err: any) => { setPublicLogs([]); setInvalidToken(Boolean(err?.status) && err.status >= 400 && err.status < 500) })
+      .finally(() => setPublicLogsLoading(false))
   }, [])
+
+  const togglePublicLog = useCallback((id: number) => {
+    setExpandedPublicLogs((prev) => {
+      const copy = new Set(prev)
+      if (copy.has(id)) copy.delete(id)
+      else copy.add(id)
+      return copy
+    })
+  }, [])
+
+  const formatTimestamp = (ts: number): string => {
+    try {
+      const d = new Date(ts * 1000)
+      return d.toLocaleString()
+    } catch {
+      return String(ts)
+    }
+  }
+
+  const statusClass = (status: string): string => {
+    const normalized = status.toLowerCase()
+    if (normalized === 'active' || normalized === 'success') return 'status-badge status-active'
+    if (normalized === 'exhausted' || normalized === 'quota_exhausted') return 'status-badge status-exhausted'
+    if (normalized === 'error') return 'status-badge status-error'
+    return 'status-badge status-unknown'
+  }
 
   return (
     <main className="app-shell public-home">
@@ -320,6 +376,95 @@ function PublicHome(): JSX.Element {
             </button>
           </div>
         )}
+      </section>
+      <section className="surface panel">
+        <div className="panel-header">
+          <div>
+            <h2>{publicStrings.logs.title}</h2>
+            <p className="panel-description">{publicStrings.logs.description}</p>
+          </div>
+        </div>
+        <div className="table-wrapper">
+          {(!isFullToken(token) || invalidToken) ? (
+            <div className="empty-state">
+              <div>{publicStrings.logs.empty.noToken}</div>
+              <div style={{ marginTop: 4, opacity: 0.9 }}>{publicStrings.logs.empty.hint}</div>
+            </div>
+          ) : publicLogsLoading ? (
+            <div className="empty-state">{publicStrings.logs.empty.loading}</div>
+          ) : publicLogs.length === 0 ? (
+            <div className="empty-state">{publicStrings.logs.empty.none}</div>
+          ) : (
+            <table className="token-detail-table">
+              <thead>
+                <tr>
+                  <th>{publicStrings.logs.table.time}</th>
+                  <th>{publicStrings.logs.table.httpStatus}</th>
+                  <th>{publicStrings.logs.table.mcpStatus}</th>
+                  <th>{publicStrings.logs.table.result}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {publicLogs.map((log) => (
+                  <React.Fragment key={log.id}>
+                    <tr>
+                      <td>{formatTimestamp(log.created_at)}</td>
+                      <td>{log.http_status ?? '—'}</td>
+                      <td>{log.mcp_status ?? '—'}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className={`log-result-button${expandedPublicLogs.has(log.id) ? ' log-result-button-active' : ''}`}
+                          onClick={() => togglePublicLog(log.id)}
+                          aria-expanded={expandedPublicLogs.has(log.id)}
+                          aria-controls={`plog-${log.id}`}
+                          aria-label={expandedPublicLogs.has(log.id) ? publicStrings.logs.toggles.hide : publicStrings.logs.toggles.show}
+                          title={expandedPublicLogs.has(log.id) ? publicStrings.logs.toggles.hide : publicStrings.logs.toggles.show}
+                        >
+                          <span className={statusClass(log.result_status)}>{log.result_status}</span>
+                          <Icon
+                            icon={expandedPublicLogs.has(log.id) ? 'mdi:chevron-up' : 'mdi:chevron-down'}
+                            width={18}
+                            height={18}
+                            className="log-result-icon"
+                          />
+                        </button>
+                      </td>
+                    </tr>
+                    {expandedPublicLogs.has(log.id) && (
+                      <tr className="log-details-row">
+                        <td colSpan={4} id={`plog-${log.id}`}>
+                          <div className="log-details-panel">
+                            <div className="log-details-summary">
+                              <div>
+                                <span className="log-details-label">Request</span>
+                                <span className="log-details-value">{`${log.method} ${log.path}${log.query ? `?${log.query}` : ''}`}</span>
+                              </div>
+                              <div>
+                                <span className="log-details-label">Response</span>
+                                <span className="log-details-value">{`${publicStrings.logs.table.httpStatus}: ${log.http_status ?? '—'} · ${publicStrings.logs.table.mcpStatus}: ${log.mcp_status ?? '—'}`}</span>
+                              </div>
+                              <div>
+                                <span className="log-details-label">Outcome</span>
+                                <span className="log-details-value">{log.result_status}</span>
+                              </div>
+                              {log.error_message && (
+                                <div>
+                                  <span className="log-details-label">Error</span>
+                                  <span className="log-details-value">{log.error_message}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       </section>
       <section className="surface panel access-panel">
         <div className="access-panel-grid">
