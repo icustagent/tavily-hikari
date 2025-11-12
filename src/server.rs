@@ -630,6 +630,139 @@ async fn get_token_metrics_public(
     }))
 }
 
+#[derive(Deserialize)]
+struct PublicLogsQuery {
+    token: String,
+    limit: Option<usize>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PublicTokenLogView {
+    id: i64,
+    method: String,
+    path: String,
+    query: Option<String>,
+    http_status: Option<i64>,
+    mcp_status: Option<i64>,
+    result_status: String,
+    error_message: Option<String>,
+    created_at: i64,
+}
+
+impl From<TokenLogRecord> for PublicTokenLogView {
+    fn from(r: TokenLogRecord) -> Self {
+        Self {
+            id: r.id,
+            method: r.method,
+            path: r.path,
+            query: r.query,
+            http_status: r.http_status,
+            mcp_status: r.mcp_status,
+            result_status: r.result_status,
+            error_message: r.error_message,
+            created_at: r.created_at,
+        }
+    }
+}
+
+fn redact_sensitive(input: &str) -> String {
+    // Redact query parameter values like tavilyApiKey=... (case-insensitive)
+    let mut s = input.to_string();
+    let mut lower = s.to_lowercase();
+    let needle = "tavilyapikey=";
+    let redacted = "<redacted>";
+    let mut offset = 0usize;
+    while let Some(pos) = lower[offset..].find(needle) {
+        let idx = offset + pos;
+        let start = idx + needle.len();
+        // find earliest delimiter among &, ), space, quote, newline
+        let mut end = s.len();
+        for delim in ['&', ')', ' ', '"', '\'', '\n'] {
+            if let Some(p) = s[start..].find(delim) {
+                end = (start + p).min(end);
+            }
+        }
+        s.replace_range(start..end, redacted);
+        lower = s.to_lowercase();
+        offset = start + redacted.len();
+    }
+    // Redact header-like phrase "Tavily-Api-Key: <value>"
+    // naive pass: case-insensitive search for "tavily-api-key"
+    let mut out = String::new();
+    let mut i = 0usize;
+    let s_lower = s.to_lowercase();
+    while let Some(pos) = s_lower[i..].find("tavily-api-key") {
+        let idx = i + pos;
+        out.push_str(&s[i..idx]);
+        // advance to after possible colon
+        let rest = &s[idx..];
+        if let Some(colon) = rest.find(':') {
+            out.push_str(&s[idx..idx + colon + 1]);
+            out.push(' ');
+            out.push_str(redacted);
+            // skip value until whitespace or line break
+            let after = idx + colon + 1;
+            let mut end = s.len();
+            for delim in ['\n', '\r'] {
+                if let Some(p) = s[after..].find(delim) {
+                    end = (after + p).min(end);
+                }
+            }
+            i = end;
+        } else {
+            // no colon, just append token
+            out.push_str("tavily-api-key");
+            i = idx + "tavily-api-key".len();
+        }
+    }
+    out.push_str(&s[i..]);
+    out
+}
+
+async fn get_public_logs(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<PublicLogsQuery>,
+) -> Result<Json<Vec<PublicTokenLogView>>, StatusCode> {
+    // Validate full token first
+    if !state
+        .proxy
+        .validate_access_token(&q.token)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    // Extract short token id
+    let token_id = q
+        .token
+        .strip_prefix("th-")
+        .and_then(|rest| rest.split_once('-').map(|(id, _)| id))
+        .ok_or(StatusCode::BAD_REQUEST)?;
+
+    let limit = q.limit.unwrap_or(20).clamp(1, 20);
+
+    state
+        .proxy
+        .token_recent_logs(token_id, limit, None)
+        .await
+        .map(|items| {
+            let mapped: Vec<PublicTokenLogView> = items
+                .into_iter()
+                .map(PublicTokenLogView::from)
+                .map(|mut v| {
+                    if let Some(err) = v.error_message.as_ref() {
+                        v.error_message = Some(redact_sensitive(err));
+                    }
+                    v
+                })
+                .collect();
+            Json(mapped)
+        })
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct DashboardSnapshot {
@@ -1405,6 +1538,7 @@ pub async fn serve(
         .route("/api/debug/forward-auth", get(get_forward_auth_debug))
         .route("/api/debug/admin", get(get_admin_debug))
         .route("/api/public/events", get(sse_public))
+        .route("/api/public/logs", get(get_public_logs))
         .route("/api/token/metrics", get(get_token_metrics_public))
         .route("/api/events", get(sse_dashboard))
         .route("/api/version", get(get_versions))
