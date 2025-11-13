@@ -1337,7 +1337,14 @@ function LogRow({ log, copyState, onCopy, expanded, onToggle, strings }: LogRowP
         <td>{formatTimestamp(log.created_at)}</td>
         <td>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <code>{log.key_id}</code>
+            <a
+              href={`#/keys/${encodeURIComponent(log.key_id)}`}
+              className="link-button"
+              title={strings.keys.actions.details}
+              aria-label={strings.keys.actions.details}
+            >
+              <code>{log.key_id}</code>
+            </a>
             <button
               type="button"
               className={copyButtonClass}
