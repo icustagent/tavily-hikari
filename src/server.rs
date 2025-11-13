@@ -1516,6 +1516,30 @@ async fn get_token_secret(
     }
 }
 
+#[axum::debug_handler]
+async fn rotate_token_secret(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<AuthTokenSecretView>, StatusCode> {
+    if !state.dev_open_admin && !state.forward_auth.is_request_admin(&headers) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    state
+        .proxy
+        .rotate_access_token_secret(&id)
+        .await
+        .map(|secret| {
+            Json(AuthTokenSecretView {
+                token: secret.token,
+            })
+        })
+        .map_err(|err| {
+            eprintln!("rotate token secret error: {err}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })
+}
+
 pub async fn serve(
     addr: SocketAddr,
     proxy: TavilyProxy,
@@ -1584,7 +1608,8 @@ pub async fn serve(
         .route("/api/tokens/:id", delete(delete_token))
         .route("/api/tokens/:id/status", patch(update_token_status))
         .route("/api/tokens/:id/note", patch(update_token_note))
-        .route("/api/tokens/:id/secret", get(get_token_secret));
+        .route("/api/tokens/:id/secret", get(get_token_secret))
+        .route("/api/tokens/:id/secret/rotate", post(rotate_token_secret));
 
     if let Some(dir) = static_dir.as_ref() {
         if dir.is_dir() {

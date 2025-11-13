@@ -323,6 +323,15 @@ impl TavilyProxy {
         self.key_store.get_access_token_secret(id).await
     }
 
+    /// Admin: rotate token secret while keeping the same token id.
+    /// Returns the new full token string (th-<id>-<secret>).
+    pub async fn rotate_access_token_secret(
+        &self,
+        id: &str,
+    ) -> Result<AuthTokenSecret, ProxyError> {
+        self.key_store.rotate_access_token_secret(id).await
+    }
+
     /// Record a token usage log. Intended for /mcp proxy handler.
     #[allow(clippy::too_many_arguments)]
     pub async fn record_token_attempt(
@@ -1591,6 +1600,34 @@ impl KeyStore {
             id: id.to_string(),
             token: Self::compose_full_token(id, &secret),
         }))
+    }
+
+    /// Update the secret for an existing token id and return the new full token string.
+    async fn rotate_access_token_secret(&self, id: &str) -> Result<AuthTokenSecret, ProxyError> {
+        // Ensure token exists first to provide a clearer error on missing id
+        let exists =
+            sqlx::query_scalar::<_, Option<i64>>("SELECT 1 FROM auth_tokens WHERE id = ? LIMIT 1")
+                .bind(id)
+                .fetch_optional(&self.pool)
+                .await?;
+        if exists.is_none() {
+            return Err(ProxyError::Database(sqlx::Error::RowNotFound));
+        }
+
+        // Generate a new secret with the current strong length
+        const ALPHABET: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        let new_secret = random_string(ALPHABET, 24);
+
+        sqlx::query("UPDATE auth_tokens SET secret = ? WHERE id = ?")
+            .bind(&new_secret)
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(AuthTokenSecret {
+            id: id.to_string(),
+            token: Self::compose_full_token(id, &new_secret),
+        })
     }
 
     // ----- Token usage logs & metrics -----

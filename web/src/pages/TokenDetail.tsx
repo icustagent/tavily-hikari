@@ -1,5 +1,6 @@
 import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { Icon } from '@iconify/react'
+import { rotateTokenSecret } from '../api'
 
 type Period = 'day' | 'week' | 'month'
 
@@ -207,6 +208,10 @@ export default function TokenDetail({ id, onBack }: { id: string; onBack?: () =>
   const [expandedLogs, setExpandedLogs] = useState<Set<number>>(() => new Set())
   const warningTimerRef = useRef<number | null>(null)
   const sinceDebounceRef = useRef<number | null>(null)
+  const rotateDialogRef = useRef<HTMLDialogElement | null>(null)
+  const rotatedDialogRef = useRef<HTMLDialogElement | null>(null)
+  const [rotating, setRotating] = useState(false)
+  const [rotatedToken, setRotatedToken] = useState<string | null>(null)
 
   const { sinceIso, untilIso } = useMemo(() => {
     const start = computeStartDate(period, debouncedSinceInput)
@@ -413,10 +418,21 @@ export default function TokenDetail({ id, onBack }: { id: string; onBack?: () =>
           <h1>Access Token Detail</h1>
           <div className="subtitle">Token <code>{id}</code></div>
         </div>
-        <button type="button" className="button" onClick={() => (onBack ? onBack() : window.history.back())}>
-          <Icon icon="mdi:arrow-left" width={18} height={18} />
-          &nbsp;Back
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" className="btn" onClick={() => (onBack ? onBack() : window.history.back())}>
+            <Icon icon="mdi:arrow-left" width={18} height={18} />
+            &nbsp;Back
+          </button>
+          <button
+            type="button"
+            className="btn btn-warning"
+            onClick={() => rotateDialogRef.current?.showModal()}
+            aria-label="Regenerate secret"
+          >
+            <Icon icon="mdi:key-change" width={18} height={18} />
+            &nbsp;Regenerate Secret
+          </button>
+        </div>
       </section>
 
       {error && <div className="surface error-banner" role="alert">{error}</div>}
@@ -619,6 +635,66 @@ export default function TokenDetail({ id, onBack }: { id: string; onBack?: () =>
           <button type="button" className="button" onClick={() => void goToPage(page + 1)} disabled={page >= totalPages || loadingMore}>下一页</button>
         </div>
       </section>
+    
+    <dialog id="confirm_rotate_token_modal" ref={rotateDialogRef} className="modal">
+      <div className="modal-box">
+        <h3 className="font-bold text-lg" style={{ marginTop: 0 }}>Regenerate Token Secret</h3>
+        <p className="py-2">
+          This will invalidate the current token secret and generate a new one. The 4-char token ID will remain the same.
+          Clients must be updated to use the new token.
+        </p>
+        <div className="modal-action">
+          <form method="dialog" onSubmit={(e) => e.preventDefault()} style={{ display: 'flex', gap: 8 }}>
+            <button type="button" className="btn" onClick={() => rotateDialogRef.current?.close()}>Cancel</button>
+            <button
+              type="button"
+              className={`btn ${rotating ? 'btn-disabled' : ''}`}
+              onClick={async () => {
+                try {
+                  setRotating(true)
+                  const res = await rotateTokenSecret(id)
+                  setRotatedToken(res.token)
+                  try { await navigator.clipboard?.writeText(res.token) } catch {}
+                  rotateDialogRef.current?.close()
+                  window.requestAnimationFrame(() => rotatedDialogRef.current?.showModal())
+                } catch (e) {
+                  // Fallback: close dialog and surface error inline
+                  rotateDialogRef.current?.close()
+                  alert((e as Error)?.message || 'Failed to regenerate token secret')
+                } finally {
+                  setRotating(false)
+                }
+              }}
+              disabled={rotating}
+            >
+              {rotating ? 'Regenerating…' : 'Regenerate'}
+            </button>
+          </form>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="rotated_token_modal" ref={rotatedDialogRef} className="modal">
+      <div className="modal-box">
+        <h3 className="font-bold text-lg" style={{ marginTop: 0 }}>New Token Generated</h3>
+        <div className="py-2">
+          <p className="panel-description" style={{ marginBottom: 8 }}>Full token (copied to clipboard):</p>
+          <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{rotatedToken ?? '—'}</pre>
+        </div>
+        <div className="modal-action">
+          <form method="dialog" onSubmit={(e) => e.preventDefault()} style={{ display: 'flex', gap: 8 }}>
+            <button type="button" className="btn" onClick={() => rotatedDialogRef.current?.close()}>Close</button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={async () => { if (rotatedToken) { try { await navigator.clipboard?.writeText(rotatedToken) } catch {} } }}
+            >
+              Copy
+            </button>
+          </form>
+        </div>
+      </div>
+    </dialog>
     </main>
   )
 }

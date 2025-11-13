@@ -314,3 +314,8 @@ export function fetchTokenSecret(id: string, signal?: AbortSignal): Promise<Auth
   const encoded = encodeURIComponent(id)
   return requestJson(`/api/tokens/${encoded}/secret`, { signal })
 }
+
+export async function rotateTokenSecret(id: string): Promise<AuthTokenSecret> {
+  const encoded = encodeURIComponent(id)
+  return await requestJson(`/api/tokens/${encoded}/secret/rotate`, { method: 'POST' })
+}
