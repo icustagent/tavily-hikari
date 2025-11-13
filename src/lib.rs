@@ -636,31 +636,8 @@ impl KeyStore {
 
         self.upgrade_auth_tokens_schema().await?;
 
-        // After ensuring schemas, run light-weight, idempotent data migrations
-        // to reconcile derived counters with their canonical log tables.
-        // This keeps old databases consistent when upgrading from versions
-        // that previously over-counted token validation as usage.
-        self.migrate_data_consistency().await?;
-
-        // Scheduled jobs table for background tasks (e.g., quota/usage sync)
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS scheduled_jobs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                job_type TEXT NOT NULL,
-                key_id TEXT,
-                status TEXT NOT NULL,
-                attempt INTEGER NOT NULL DEFAULT 1,
-                message TEXT,
-                started_at INTEGER NOT NULL,
-                finished_at INTEGER,
-                FOREIGN KEY (key_id) REFERENCES api_keys(id)
-            )
-            "#,
-        )
-        .execute(&self.pool)
-        .await?;
-
+        // Ensure per-token usage logs table exists BEFORE running data consistency migration
+        // because the migration queries auth_token_logs.
         // Per-token usage logs for detail page (auth_token_logs)
         sqlx::query(
             r#"
@@ -696,6 +673,31 @@ impl KeyStore {
                 .execute(&self.pool)
                 .await?;
         }
+
+        // After ensuring schemas, run light-weight, idempotent data migrations
+        // to reconcile derived counters with their canonical log tables.
+        // This keeps old databases consistent when upgrading from versions
+        // that previously over-counted token validation as usage.
+        self.migrate_data_consistency().await?;
+
+        // Scheduled jobs table for background tasks (e.g., quota/usage sync)
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS scheduled_jobs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_type TEXT NOT NULL,
+                key_id TEXT,
+                status TEXT NOT NULL,
+                attempt INTEGER NOT NULL DEFAULT 1,
+                message TEXT,
+                started_at INTEGER NOT NULL,
+                finished_at INTEGER,
+                FOREIGN KEY (key_id) REFERENCES api_keys(id)
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
 
         Ok(())
     }
