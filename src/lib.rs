@@ -636,31 +636,8 @@ impl KeyStore {
 
         self.upgrade_auth_tokens_schema().await?;
 
-        // After ensuring schemas, run light-weight, idempotent data migrations
-        // to reconcile derived counters with their canonical log tables.
-        // This keeps old databases consistent when upgrading from versions
-        // that previously over-counted token validation as usage.
-        self.migrate_data_consistency().await?;
-
-        // Scheduled jobs table for background tasks (e.g., quota/usage sync)
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS scheduled_jobs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                job_type TEXT NOT NULL,
-                key_id TEXT,
-                status TEXT NOT NULL,
-                attempt INTEGER NOT NULL DEFAULT 1,
-                message TEXT,
-                started_at INTEGER NOT NULL,
-                finished_at INTEGER,
-                FOREIGN KEY (key_id) REFERENCES api_keys(id)
-            )
-            "#,
-        )
-        .execute(&self.pool)
-        .await?;
-
+        // Ensure per-token usage logs table exists BEFORE running data consistency migration
+        // because the migration queries auth_token_logs.
         // Per-token usage logs for detail page (auth_token_logs)
         sqlx::query(
             r#"
@@ -696,6 +673,31 @@ impl KeyStore {
                 .execute(&self.pool)
                 .await?;
         }
+
+        // After ensuring schemas, run light-weight, idempotent data migrations
+        // to reconcile derived counters with their canonical log tables.
+        // This keeps old databases consistent when upgrading from versions
+        // that previously over-counted token validation as usage.
+        self.migrate_data_consistency().await?;
+
+        // Scheduled jobs table for background tasks (e.g., quota/usage sync)
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS scheduled_jobs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_type TEXT NOT NULL,
+                key_id TEXT,
+                status TEXT NOT NULL,
+                attempt INTEGER NOT NULL DEFAULT 1,
+                message TEXT,
+                started_at INTEGER NOT NULL,
+                finished_at INTEGER,
+                FOREIGN KEY (key_id) REFERENCES api_keys(id)
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
 
         Ok(())
     }
@@ -1465,7 +1467,12 @@ impl KeyStore {
         }
         let id = parts[0];
         let secret = parts[1];
-        if id.len() != 4 || secret.len() != 12 {
+        // Keep short, human-friendly id; strengthen total entropy by lengthening secret.
+        // Backward-compatible: accept legacy 12-char secrets and new longer secrets.
+        const LEGACY_SECRET_LEN: usize = 12;
+        const NEW_SECRET_LEN: usize = 24; // chosen to significantly raise entropy
+        let secret_len_ok = secret.len() == LEGACY_SECRET_LEN || secret.len() == NEW_SECRET_LEN;
+        if id.len() != 4 || !secret_len_ok {
             return Ok(false);
         }
 
@@ -1489,7 +1496,8 @@ impl KeyStore {
         const ALPHABET: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
         loop {
             let id = random_string(ALPHABET, 4);
-            let secret = random_string(ALPHABET, 12);
+            // Increase secret length to strengthen token entropy while keeping id short.
+            let secret = random_string(ALPHABET, 24);
             let res = sqlx::query(
                 r#"INSERT INTO auth_tokens (id, secret, enabled, note, total_requests, created_at, last_used_at)
                    VALUES (?, ?, 1, ?, 0, ?, NULL)"#,

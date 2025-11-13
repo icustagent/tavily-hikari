@@ -119,10 +119,6 @@ impl ForwardAuthConfig {
     }
 
     fn is_request_admin(&self, headers: &HeaderMap) -> bool {
-        if self.admin_override_name().is_some() {
-            return true;
-        }
-
         if !self.is_enabled() {
             return false;
         }
@@ -199,6 +195,9 @@ async fn debug_is_admin(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Result<Json<IsAdminDebug>, StatusCode> {
+    if !state.dev_open_admin && !state.forward_auth.is_request_admin(&headers) {
+        return Err(StatusCode::FORBIDDEN);
+    }
     let cfg = &state.forward_auth;
     let user_value = cfg.user_value(&headers).map(|s| s.to_string());
     let is_admin = cfg.is_request_admin(&headers);
@@ -538,8 +537,9 @@ fn build_404_landing_inline(css_content: Option<&str>, original: String) -> Stri
         style_block.push_str(content);
     }
     style_block.push_str("\n</style>\n");
+    // Safer: pass original path via data attribute and read it in script without string concatenation
     let script = format!(
-        "<script>try{{history.replaceState(null,'', '{}')}}catch(_e){{}}</script>",
+        "<script data-p=\"{}\">!function(){{try{{var s=document.currentScript;var p=s&&s.getAttribute('data-p')||'/';history.replaceState(null,'', p)}}catch(_e){{}}}}()</script>",
         html_escape::encode_double_quoted_attribute(&original)
     );
     format!(
@@ -752,8 +752,13 @@ async fn get_public_logs(
                 .into_iter()
                 .map(PublicTokenLogView::from)
                 .map(|mut v| {
+                    // Redact sensitive patterns across error_message, path and query
                     if let Some(err) = v.error_message.as_ref() {
                         v.error_message = Some(redact_sensitive(err));
+                    }
+                    v.path = redact_sensitive(&v.path);
+                    if let Some(q) = v.query.as_ref() {
+                        v.query = Some(redact_sensitive(q));
                     }
                     v
                 })
@@ -1094,17 +1099,27 @@ struct ForwardAuthDebugView {
 
 async fn get_forward_auth_debug(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
 ) -> Result<Json<ForwardAuthDebugView>, StatusCode> {
+    if !state.dev_open_admin && !state.forward_auth.is_request_admin(&headers) {
+        return Err(StatusCode::FORBIDDEN);
+    }
     let cfg = &state.forward_auth;
     Ok(Json(ForwardAuthDebugView {
         enabled: cfg.is_enabled(),
         user_header: cfg.user_header().map(|h| h.to_string()),
-        admin_value: cfg.admin_value().map(|s| s.to_string()),
+        admin_value: None,
         nickname_header: cfg.nickname_header().map(|h| h.to_string()),
     }))
 }
 
-async fn debug_headers(headers: HeaderMap) -> (StatusCode, Json<serde_json::Value>) {
+async fn debug_headers(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<(StatusCode, Json<serde_json::Value>), StatusCode> {
+    if !state.dev_open_admin && !state.forward_auth.is_request_admin(&headers) {
+        return Err(StatusCode::FORBIDDEN);
+    }
     let mut map = serde_json::Map::new();
     for (k, v) in headers.iter() {
         map.insert(
@@ -1112,7 +1127,7 @@ async fn debug_headers(headers: HeaderMap) -> (StatusCode, Json<serde_json::Valu
             serde_json::Value::String(v.to_str().unwrap_or("").to_string()),
         );
     }
-    (StatusCode::OK, Json(serde_json::Value::Object(map)))
+    Ok((StatusCode::OK, Json(serde_json::Value::Object(map))))
 }
 
 async fn get_profile(
@@ -1949,8 +1964,12 @@ struct TokenMetricsQuery {
 async fn get_token_metrics(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
+    headers: HeaderMap,
     Query(q): Query<TokenMetricsQuery>,
 ) -> Result<Json<TokenSummaryView>, StatusCode> {
+    if !state.dev_open_admin && !state.forward_auth.is_request_admin(&headers) {
+        return Err(StatusCode::FORBIDDEN);
+    }
     let since = q
         .since
         .as_deref()
@@ -1979,14 +1998,30 @@ struct TokenLogsQuery {
 async fn get_token_logs(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
+    headers: HeaderMap,
     Query(q): Query<TokenLogsQuery>,
 ) -> Result<Json<Vec<TokenLogView>>, StatusCode> {
+    if !state.dev_open_admin && !state.forward_auth.is_request_admin(&headers) {
+        return Err(StatusCode::FORBIDDEN);
+    }
     let limit = q.limit.unwrap_or(DEFAULT_LOG_LIMIT).clamp(1, 500);
     state
         .proxy
         .token_recent_logs(&id, limit, q.before)
         .await
-        .map(|logs| Json(logs.into_iter().map(TokenLogView::from).collect()))
+        .map(|logs| {
+            let mapped: Vec<TokenLogView> = logs
+                .into_iter()
+                .map(TokenLogView::from)
+                .map(|mut v| {
+                    if let Some(err) = v.error_message.as_ref() {
+                        v.error_message = Some(redact_sensitive(err));
+                    }
+                    v
+                })
+                .collect();
+            Json(mapped)
+        })
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
@@ -2009,8 +2044,12 @@ struct TokenLogsPageView {
 async fn get_token_logs_page(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
+    headers: HeaderMap,
     Query(q): Query<TokenLogsPageQuery>,
 ) -> Result<Json<TokenLogsPageView>, StatusCode> {
+    if !state.dev_open_admin && !state.forward_auth.is_request_admin(&headers) {
+        return Err(StatusCode::FORBIDDEN);
+    }
     let page = q.page.unwrap_or(1).max(1);
     let per_page = q.per_page.unwrap_or(20).clamp(1, 200);
     let since = q
@@ -2031,8 +2070,18 @@ async fn get_token_logs_page(
         .token_logs_page(&id, page, per_page, since, Some(until))
         .await
         .map(|(items, total)| {
+            let mapped: Vec<TokenLogView> = items
+                .into_iter()
+                .map(TokenLogView::from)
+                .map(|mut v| {
+                    if let Some(err) = v.error_message.as_ref() {
+                        v.error_message = Some(redact_sensitive(err));
+                    }
+                    v
+                })
+                .collect();
             Json(TokenLogsPageView {
-                items: items.into_iter().map(TokenLogView::from).collect(),
+                items: mapped,
                 page,
                 per_page,
                 total,
@@ -2069,7 +2118,11 @@ struct TokenSnapshot {
 async fn sse_token(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-) -> Sse<impl futures_util::Stream<Item = Result<Event, axum::http::Error>>> {
+    headers: HeaderMap,
+) -> Result<Sse<impl futures_util::Stream<Item = Result<Event, axum::http::Error>>>, StatusCode> {
+    if !state.dev_open_admin && !state.forward_auth.is_request_admin(&headers) {
+        return Err(StatusCode::FORBIDDEN);
+    }
     let state = state.clone();
     let stream = stream! {
         let mut last_log_id: Option<i64> = None;
@@ -2097,7 +2150,7 @@ async fn sse_token(
             tokio::time::sleep(Duration::from_secs(2)).await;
         }
     };
-    Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)).text(""))
+    Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)).text("")))
 }
 
 async fn build_token_snapshot_event(state: &Arc<AppState>, id: &str) -> Option<Event> {
@@ -2118,7 +2171,16 @@ async fn build_token_snapshot_event(state: &Arc<AppState>, id: &str) -> Option<E
         .ok()?;
     let payload = TokenSnapshot {
         summary: summary.into(),
-        logs: logs.into_iter().map(TokenLogView::from).collect(),
+        logs: logs
+            .into_iter()
+            .map(TokenLogView::from)
+            .map(|mut v| {
+                if let Some(err) = v.error_message.as_ref() {
+                    v.error_message = Some(redact_sensitive(err));
+                }
+                v
+            })
+            .collect(),
     };
     let json = serde_json::to_string(&payload).ok()?;
     Some(Event::default().event("snapshot").data(json))
