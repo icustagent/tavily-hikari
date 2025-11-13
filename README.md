@@ -137,6 +137,52 @@ export FORWARD_AUTH_NICKNAME_HEADER=Remote-Name
 - `scripts/write-version.mjs` stamps the build version into the UI during CI releases.
 - `npm run dev` proxies `/api`, `/mcp`, and `/health` to the backend to avoid CORS hassle during development.
 
+## Screenshots
+
+Operator and integration views of Tavily Hikari.
+
+### MCP Client Setup
+
+![MCP client setup in Codex CLI](docs/assets/mcp-setup-codex-cli.png)
+
+### Admin Dashboard
+
+![Admin overview with key table and metrics](docs/assets/admin-dashboard-cn.png)
+
+### User Dashboard
+
+![User dashboard showing monthly success, today count, key pool status, and recent requests](docs/assets/user-dashboard-en.png)
+
+## MCP Clients
+
+Tavily Hikari speaks standard MCP over HTTP and works with popular clients:
+
+- [Codex CLI](https://developers.openai.com/codex/cli/reference/)
+- [Claude Code CLI](https://www.npmjs.com/package/@anthropic-ai/claude-code)
+- [VS Code — Use MCP servers](https://code.visualstudio.com/docs/copilot/customization/mcp-servers)
+- [GitHub Copilot — GitHub MCP Server](https://docs.github.com/en/copilot/how-tos/provide-context/use-mcp/set-up-the-github-mcp-server)
+- [Claude Desktop](https://claude.com/download)
+- [Cursor](https://cursor.com/)
+- [Windsurf](https://windsurf.com/)
+- Any MCP client supporting HTTP + Bearer token auth
+
+Example (Codex CLI — ~/.codex/config.toml):
+
+```
+experimental_use_rmcp_client = true
+
+[mcp_servers.tavily_hikari]
+url = "https://<your-host>/mcp"
+bearer_token_env_var = "TAVILY_HIKARI_TOKEN"
+```
+
+Then set the token and verify:
+
+```
+export TAVILY_HIKARI_TOKEN="<token>"
+codex mcp list | grep tavily_hikari
+```
+
 ## Development
 
 - Rust toolchain pinned to 1.91.0 via `rust-toolchain.toml`.

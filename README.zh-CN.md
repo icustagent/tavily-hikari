@@ -145,6 +145,52 @@ export FORWARD_AUTH_NICKNAME_HEADER=Remote-Name
 - DaisyUI + Tailwind 提供深浅色主题，Iconify 提供图标，自带版本号展示（`scripts/write-version.mjs` 会把版本写入构建结果）。
 - 开发期 `npm run dev` 会把 `/api`、`/mcp`、`/health` 请求代理到后端，减少 CORS 与鉴权配置成本。
 
+## 界面截图
+
+面向用户与管理员的主要界面截图如下：
+
+### MCP 客户端配置（Codex CLI）
+
+![在 Codex CLI 中配置 MCP 客户端的示例](docs/assets/mcp-setup-codex-cli.png)
+
+### 管理后台（中文）
+
+![管理后台总览：访客令牌、统计卡片与 API Keys 表格](docs/assets/admin-dashboard-cn.png)
+
+### 用户仪表盘（User Dashboard）
+
+![用户仪表盘：月成功数、今日请求、密钥池状态与近期请求](docs/assets/user-dashboard-en.png)
+
+## MCP 客户端
+
+Tavily Hikari 实现了标准的 MCP（HTTP 传输 + Bearer Token 认证），可与主流客户端配合使用：
+
+- [Codex CLI](https://developers.openai.com/codex/cli/reference/)
+- [Claude Code CLI](https://www.npmjs.com/package/@anthropic-ai/claude-code)
+- [VS Code — 使用 MCP 服务器](https://code.visualstudio.com/docs/copilot/customization/mcp-servers)
+- [GitHub Copilot — GitHub MCP Server](https://docs.github.com/en/copilot/how-tos/provide-context/use-mcp/set-up-the-github-mcp-server)
+- [Claude Desktop](https://claude.com/download)
+- [Cursor](https://cursor.com/)
+- [Windsurf](https://windsurf.com/)
+- 任何支持 HTTP + Bearer Token 的 MCP 客户端
+
+示例（Codex CLI — `~/.codex/config.toml`）：
+
+```
+experimental_use_rmcp_client = true
+
+[mcp_servers.tavily_hikari]
+url = "https://<your-host>/mcp"
+bearer_token_env_var = "TAVILY_HIKARI_TOKEN"
+```
+
+设置环境变量并验证：
+
+```
+export TAVILY_HIKARI_TOKEN="<token>"
+codex mcp list | grep tavily_hikari
+```
+
 ## 开发与测试
 
 - **Rust**：固定使用 1.91.0（见 `rust-toolchain.toml`）。
