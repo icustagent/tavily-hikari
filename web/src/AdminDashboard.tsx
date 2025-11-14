@@ -1332,6 +1332,8 @@ function AdminDashboard(): JSX.Element {
             ? {
                 maxWidth: 'min(100vw - 3rem, 96ch)',
                 width: `${batchShareTextareaWidthCh + 4}ch`,
+                maxHeight: 'none',
+                overflowY: 'visible',
               }
             : undefined
         }
@@ -1379,7 +1381,7 @@ function AdminDashboard(): JSX.Element {
               rows={batchShareRows}
               style={{
                 width: '100%',
-                maxHeight: 'min(50vh, 24rem)',
+                maxHeight: 'min(40vh, 24rem)',
                 fontFamily:
                   'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
                 whiteSpace: 'pre',
