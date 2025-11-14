@@ -198,6 +198,25 @@ button {
 }
 }
 
+/* Batch create dialog: ensure only textarea scrolls, modal-box stays within viewport with margins */
+#batch_create_tokens_modal .modal-box {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 5rem); /* keep daisyUI's vertical margins */
+}
+
+#batch_create_tokens_modal .batch-dialog-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0; /* allow textarea to shrink within modal-box */
+}
+
+#batch_create_tokens_modal .batch-dialog-body .textarea {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .icon-spin {
   animation: icon-spin 1s linear infinite;
 }

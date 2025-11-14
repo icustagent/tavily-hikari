@@ -219,12 +219,6 @@ function AdminDashboard(): JSX.Element {
   const [batchCount, setBatchCount] = useState(10)
   const [batchCreating, setBatchCreating] = useState(false)
   const [batchShareText, setBatchShareText] = useState<string | null>(null)
-  const batchShareLines = batchShareText?.split('\n') ?? []
-  const batchShareRows = Math.min(12, Math.max(4, batchShareLines.length || 0))
-  const batchShareMaxLineLength = batchShareLines.reduce(
-    (max, line) => (line.length > max ? line.length : max),
-    0,
-  )
   const isAdmin = profile?.isAdmin ?? false
 
   const copyStateKey = useCallback((scope: 'keys' | 'logs' | 'tokens', identifier: string | number) => {
@@ -1322,17 +1316,7 @@ function AdminDashboard(): JSX.Element {
     </main>
     {/* Batch Create Tokens (DaisyUI modal) */}
     <dialog id="batch_create_tokens_modal" ref={batchDialogRef} className="modal">
-      <div
-        className="modal-box"
-        style={
-          batchShareText
-            ? {
-                maxHeight: 'none',
-                overflowY: 'visible',
-              }
-            : undefined
-        }
-      >
+      <div className="modal-box">
         <h3 className="font-bold text-lg" style={{ marginTop: 0 }}>{tokenStrings.batchDialog.title}</h3>
         {batchShareText == null ? (
           <>
@@ -1366,25 +1350,30 @@ function AdminDashboard(): JSX.Element {
           </>
         ) : (
           <>
-            <p className="py-2">
-              {tokenStrings.batchDialog.createdN.replace('{n}', String(batchShareLines.length))}
-            </p>
-            <textarea
-              className="textarea"
-              readOnly
-              wrap="off"
-              rows={batchShareRows}
-              style={{
-                width: '100%',
-                fontFamily:
-                  'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-                whiteSpace: 'pre',
-                overflowX: 'auto',
-                overflowY: 'auto',
-                resize: 'none',
-              }}
-              value={batchShareText ?? ''}
-            />
+            <div className="batch-dialog-body">
+              <p className="py-2">
+                {tokenStrings.batchDialog.createdN.replace(
+                  '{n}',
+                  String((batchShareText ?? '').split('\n').filter((line) => line.length > 0).length),
+                )}
+              </p>
+              <textarea
+                className="textarea"
+                readOnly
+                wrap="off"
+                rows={6}
+                style={{
+                  width: '100%',
+                  fontFamily:
+                    'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+                  whiteSpace: 'pre',
+                  overflowX: 'auto',
+                  overflowY: 'auto',
+                  resize: 'none',
+                }}
+                value={batchShareText ?? ''}
+              />
+            </div>
             <div className="modal-action">
               <form method="dialog" onSubmit={(e) => e.preventDefault()} style={{ display: 'flex', gap: 8 }}>
                 <button
