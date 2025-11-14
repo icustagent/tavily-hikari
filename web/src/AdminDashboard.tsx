@@ -220,14 +220,11 @@ function AdminDashboard(): JSX.Element {
   const [batchCreating, setBatchCreating] = useState(false)
   const [batchShareText, setBatchShareText] = useState<string | null>(null)
   const batchShareLines = batchShareText?.split('\n') ?? []
-  const batchShareRows = Math.max(4, batchShareLines.length || 0)
+  const batchShareRows = Math.min(12, Math.max(4, batchShareLines.length || 0))
   const batchShareMaxLineLength = batchShareLines.reduce(
     (max, line) => (line.length > max ? line.length : max),
     0,
   )
-  const batchShareTextareaWidthCh = batchShareMaxLineLength > 0
-    ? Math.min(120, batchShareMaxLineLength + 8)
-    : 40
   const isAdmin = profile?.isAdmin ?? false
 
   const copyStateKey = useCallback((scope: 'keys' | 'logs' | 'tokens', identifier: string | number) => {
@@ -1330,8 +1327,6 @@ function AdminDashboard(): JSX.Element {
         style={
           batchShareText
             ? {
-                maxWidth: 'min(100vw - 3rem, 96ch)',
-                width: `${batchShareTextareaWidthCh + 4}ch`,
                 maxHeight: 'none',
                 overflowY: 'visible',
               }
@@ -1381,7 +1376,6 @@ function AdminDashboard(): JSX.Element {
               rows={batchShareRows}
               style={{
                 width: '100%',
-                maxHeight: 'min(40vh, 24rem)',
                 fontFamily:
                   'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
                 whiteSpace: 'pre',
