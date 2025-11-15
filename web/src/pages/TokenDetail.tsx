@@ -11,6 +11,16 @@ interface TokenDetailInfo {
   total_requests: number
   created_at: number
   last_used_at: number | null
+  quota_state: 'normal' | 'hour' | 'day' | 'month'
+  quota_hourly_used: number
+  quota_hourly_limit: number
+  quota_daily_used: number
+  quota_daily_limit: number
+  quota_monthly_used: number
+  quota_monthly_limit: number
+  quota_hourly_reset_at: number
+  quota_daily_reset_at: number
+  quota_monthly_reset_at: number
 }
 
 interface TokenSummary {
@@ -80,6 +90,37 @@ function formatDate(value: Date): string {
   const m = (value.getMonth() + 1).toString().padStart(2, '0')
   const d = value.getDate().toString().padStart(2, '0')
   return `${y}-${m}-${d}`
+}
+
+function formatResetTime(ts?: number | null): string {
+  if (!ts) return '—'
+  try {
+    return dateTimeFormatter.format(new Date(ts * 1000))
+  } catch {
+    return '—'
+  }
+}
+
+interface QuotaStatCardProps {
+  label: string
+  used: number
+  limit: number
+  resetAt?: number | null
+  description: string
+}
+
+function QuotaStatCard({ label, used, limit, resetAt, description }: QuotaStatCardProps): JSX.Element {
+  return (
+    <div className="quota-stat-card">
+      <div className="quota-stat-label">{label}</div>
+      <div className="quota-stat-value">
+        {formatNumber(used)}
+        <span>/ {formatNumber(limit)}</span>
+      </div>
+      <div className="quota-stat-description">{description}</div>
+      <div className="quota-stat-reset">下一次完全恢复：{formatResetTime(resetAt)}</div>
+    </div>
+  )
 }
 
 function startOfDay(ts = Date.now()): Date {
@@ -563,6 +604,31 @@ export default function TokenDetail({ id, onBack }: { id: string; onBack?: () =>
           <MetricCard label="Errors" value={formatNumber(summary?.error_count ?? 0)} />
           <MetricCard label="Quota Exhausted" value={formatNumber(summary?.quota_exhausted_count ?? 0)} />
         </div>
+        {info && (
+          <div className="token-quota-stats">
+            <QuotaStatCard
+              label="1 Hour"
+              used={info.quota_hourly_used}
+              limit={info.quota_hourly_limit}
+              resetAt={info.quota_hourly_reset_at}
+              description="滚动 1 小时窗口"
+            />
+            <QuotaStatCard
+              label="24 Hours"
+              used={info.quota_daily_used}
+              limit={info.quota_daily_limit}
+              resetAt={info.quota_daily_reset_at}
+              description="滚动 24 小时窗口"
+            />
+            <QuotaStatCard
+              label="This Month"
+              used={info.quota_monthly_used}
+              limit={info.quota_monthly_limit}
+              resetAt={info.quota_monthly_reset_at}
+              description="自然月额度（服务器时区）"
+            />
+          </div>
+        )}
       </section>
 
       <section className="surface panel">
