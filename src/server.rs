@@ -2569,7 +2569,7 @@ async fn proxy_handler(
                             parts.uri.query(),
                             Some(StatusCode::TOO_MANY_REQUESTS.as_u16() as i64),
                             None,
-                            "quota_exceeded",
+                            "quota_exhausted",
                             Some(&message),
                         )
                         .await;
@@ -2619,6 +2619,10 @@ async fn proxy_handler(
                             }
                         }
                     }
+                }
+
+                if result_status == "success" && !resp.status.is_success() {
+                    result_status = "error";
                 }
 
                 let http_code = resp.status.as_u16() as i64;

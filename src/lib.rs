@@ -1,4 +1,4 @@
-use std::{cmp::min, collections::HashMap, sync::Arc};
+use std::{cmp::min, collections::HashMap, sync::Arc, time::Duration};
 
 use bytes::Bytes;
 use chrono::{Datelike, TimeZone, Utc};
@@ -9,7 +9,7 @@ use reqwest::{
     header::{CONTENT_LENGTH, HOST, HeaderMap, HeaderValue},
 };
 use serde_json::Value;
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use sqlx::{QueryBuilder, Row, Sqlite, SqlitePool, Transaction};
 use thiserror::Error;
 use tokio::sync::Mutex;
@@ -764,7 +764,9 @@ impl KeyStore {
     async fn new(database_path: &str) -> Result<Self, ProxyError> {
         let options = SqliteConnectOptions::new()
             .filename(database_path)
-            .create_if_missing(true);
+            .create_if_missing(true)
+            .journal_mode(SqliteJournalMode::Wal)
+            .busy_timeout(Duration::from_secs(5));
 
         let pool = SqlitePoolOptions::new()
             .min_connections(1)
@@ -1130,47 +1132,28 @@ impl KeyStore {
         token_id: &str,
         current_month_start: i64,
     ) -> Result<i64, ProxyError> {
-        let mut tx = self.pool.begin().await?;
-        let existing = sqlx::query_as::<_, (i64, i64)>(
-            "SELECT month_start, month_count FROM auth_token_quota WHERE token_id = ?",
+        let (_month_start, month_count): (i64, i64) = sqlx::query_as(
+            r#"
+            INSERT INTO auth_token_quota (token_id, month_start, month_count)
+            VALUES (?, ?, 1)
+            ON CONFLICT(token_id) DO UPDATE SET
+                month_start = CASE
+                    WHEN excluded.month_start > auth_token_quota.month_start THEN excluded.month_start
+                    ELSE auth_token_quota.month_start
+                END,
+                month_count = CASE
+                    WHEN excluded.month_start > auth_token_quota.month_start THEN 1
+                    ELSE auth_token_quota.month_count + 1
+                END
+            RETURNING month_start, month_count
+            "#,
         )
         .bind(token_id)
-        .fetch_optional(&mut *tx)
+        .bind(current_month_start)
+        .fetch_one(&self.pool)
         .await?;
 
-        let (month_start, new_count) = match existing {
-            None => (current_month_start, 1),
-            Some((stored_start, stored_count)) => {
-                if stored_start < current_month_start {
-                    (current_month_start, 1)
-                } else {
-                    (stored_start, stored_count + 1)
-                }
-            }
-        };
-
-        if existing.is_some() {
-            sqlx::query(
-                "UPDATE auth_token_quota SET month_start = ?, month_count = ? WHERE token_id = ?",
-            )
-            .bind(month_start)
-            .bind(new_count)
-            .bind(token_id)
-            .execute(&mut *tx)
-            .await?;
-        } else {
-            sqlx::query(
-                "INSERT INTO auth_token_quota (token_id, month_start, month_count) VALUES (?, ?, ?)",
-            )
-            .bind(token_id)
-            .bind(month_start)
-            .bind(new_count)
-            .execute(&mut *tx)
-            .await?;
-        }
-
-        tx.commit().await?;
-        Ok(new_count)
+        Ok(month_count)
     }
 
     async fn upgrade_auth_tokens_schema(&self) -> Result<(), ProxyError> {
@@ -3139,27 +3122,31 @@ pub struct TokenQuotaVerdict {
 
 impl TokenQuotaVerdict {
     fn new(
-        hourly_used: i64,
+        hourly_used_raw: i64,
         hourly_limit: i64,
-        daily_used: i64,
+        daily_used_raw: i64,
         daily_limit: i64,
-        monthly_used: i64,
+        monthly_used_raw: i64,
         monthly_limit: i64,
     ) -> Self {
         let mut exceeded_window = None;
         let mut allowed = true;
-        if hourly_used > hourly_limit {
+        if hourly_used_raw > hourly_limit {
             exceeded_window = Some(QuotaWindow::Hour);
             allowed = false;
         }
-        if daily_used > daily_limit {
+        if daily_used_raw > daily_limit {
             exceeded_window = Some(QuotaWindow::Day);
             allowed = false;
         }
-        if monthly_used > monthly_limit {
+        if monthly_used_raw > monthly_limit {
             exceeded_window = Some(QuotaWindow::Month);
             allowed = false;
         }
+
+        let hourly_used = min(hourly_used_raw, hourly_limit);
+        let daily_used = min(daily_used_raw, daily_limit);
+        let monthly_used = min(monthly_used_raw, monthly_limit);
         Self {
             allowed,
             exceeded_window,
