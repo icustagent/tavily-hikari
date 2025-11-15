@@ -92,15 +92,6 @@ function formatDate(value: Date): string {
   return `${y}-${m}-${d}`
 }
 
-function formatResetTime(ts?: number | null): string {
-  if (!ts) return '—'
-  try {
-    return dateTimeFormatter.format(new Date(ts * 1000))
-  } catch {
-    return '—'
-  }
-}
-
 interface QuotaStatCardProps {
   label: string
   used: number
@@ -110,6 +101,15 @@ interface QuotaStatCardProps {
 }
 
 function QuotaStatCard({ label, used, limit, resetAt, description }: QuotaStatCardProps): JSX.Element {
+  const shouldShowReset = used > 0 && typeof resetAt === 'number' && resetAt * 1000 > Date.now()
+  let resetLabel = '尚未使用'
+  if (shouldShowReset) {
+    try {
+      resetLabel = dateTimeFormatter.format(new Date(resetAt! * 1000))
+    } catch {
+      resetLabel = '—'
+    }
+  }
   return (
     <div className="quota-stat-card">
       <div className="quota-stat-label">{label}</div>
@@ -118,7 +118,9 @@ function QuotaStatCard({ label, used, limit, resetAt, description }: QuotaStatCa
         <span>/ {formatNumber(limit)}</span>
       </div>
       <div className="quota-stat-description">{description}</div>
-      <div className="quota-stat-reset">下一次完全恢复：{formatResetTime(resetAt)}</div>
+      <div className="quota-stat-reset">
+        {shouldShowReset ? `下一次完全恢复：${resetLabel}` : resetLabel}
+      </div>
     </div>
   )
 }
