@@ -85,6 +85,8 @@ const GRANULARITY_MINUTE: &str = "minute";
 const GRANULARITY_HOUR: &str = "hour";
 const BUCKET_RETENTION_SECS: i64 = 2 * 24 * 3600; // 48h，足够覆盖 24h 窗口
 const CLEANUP_INTERVAL_SECS: i64 = 600;
+const SECS_PER_HOUR: i64 = 3600;
+const SECS_PER_DAY: i64 = 24 * SECS_PER_HOUR;
 
 #[derive(Debug, Clone)]
 struct SanitizedHeaders {
@@ -358,8 +360,45 @@ impl TavilyProxy {
         }
         let ids: Vec<String> = tokens.iter().map(|t| t.id.clone()).collect();
         let verdicts = self.token_quota.snapshot_many(&ids).await?;
+        let now = Utc::now();
+        let now_ts = now.timestamp();
+        let minute_bucket = now_ts - (now_ts % 60);
+        let hour_bucket = now_ts - (now_ts % SECS_PER_HOUR);
+        let hour_window_start = minute_bucket - 59 * 60;
+        let day_window_start = hour_bucket - 23 * SECS_PER_HOUR;
+        let hourly_oldest = self
+            .key_store
+            .earliest_usage_bucket_since_bulk(&ids, GRANULARITY_MINUTE, hour_window_start)
+            .await?;
+        let daily_oldest = self
+            .key_store
+            .earliest_usage_bucket_since_bulk(&ids, GRANULARITY_HOUR, day_window_start)
+            .await?;
+        let month_start = start_of_month(now);
+        let next_month_reset = start_of_next_month(month_start).timestamp();
         for token in tokens.iter_mut() {
             if let Some(verdict) = verdicts.get(&token.id) {
+                token.quota_hourly_reset_at = if verdict.hourly_used > 0 {
+                    hourly_oldest
+                        .get(&token.id)
+                        .copied()
+                        .map(|bucket| bucket + SECS_PER_HOUR)
+                } else {
+                    None
+                };
+                token.quota_daily_reset_at = if verdict.daily_used > 0 {
+                    daily_oldest
+                        .get(&token.id)
+                        .copied()
+                        .map(|bucket| bucket + SECS_PER_DAY)
+                } else {
+                    None
+                };
+                token.quota_monthly_reset_at = if verdict.monthly_used > 0 {
+                    Some(next_month_reset)
+                } else {
+                    None
+                };
                 token.quota = Some(verdict.clone());
             }
         }
@@ -1056,6 +1095,41 @@ impl KeyStore {
         let mut map = HashMap::new();
         for (token_id, total) in rows {
             map.insert(token_id, total);
+        }
+        Ok(map)
+    }
+
+    async fn earliest_usage_bucket_since_bulk(
+        &self,
+        token_ids: &[String],
+        granularity: &str,
+        bucket_start_at_least: i64,
+    ) -> Result<HashMap<String, i64>, ProxyError> {
+        if token_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let mut builder = QueryBuilder::new(
+            "SELECT token_id, MIN(bucket_start) as earliest FROM token_usage_buckets WHERE granularity = ",
+        );
+        builder.push_bind(granularity);
+        builder.push(" AND bucket_start >= ");
+        builder.push_bind(bucket_start_at_least);
+        builder.push(" AND token_id IN (");
+        {
+            let mut separated = builder.separated(", ");
+            for token_id in token_ids {
+                separated.push_bind(token_id);
+            }
+        }
+        builder.push(") GROUP BY token_id");
+
+        let rows = builder
+            .build_query_as::<(String, i64)>()
+            .fetch_all(&self.pool)
+            .await?;
+        let mut map = HashMap::new();
+        for (token_id, bucket_start) in rows {
+            map.insert(token_id, bucket_start);
         }
         Ok(map)
     }
@@ -2035,6 +2109,9 @@ impl KeyStore {
                     created_at,
                     last_used_at: last_used,
                     quota: None,
+                    quota_hourly_reset_at: None,
+                    quota_daily_reset_at: None,
+                    quota_monthly_reset_at: None,
                 },
             )
             .collect())
@@ -2088,6 +2165,9 @@ impl KeyStore {
                     created_at,
                     last_used_at: last_used,
                     quota: None,
+                    quota_hourly_reset_at: None,
+                    quota_daily_reset_at: None,
+                    quota_monthly_reset_at: None,
                 },
             )
             .collect();
@@ -3277,6 +3357,9 @@ pub struct AuthToken {
     pub created_at: i64,
     pub last_used_at: Option<i64>,
     pub quota: Option<TokenQuotaVerdict>,
+    pub quota_hourly_reset_at: Option<i64>,
+    pub quota_daily_reset_at: Option<i64>,
+    pub quota_monthly_reset_at: Option<i64>,
 }
 
 /// Full token for copy (never store prefix-only here)
@@ -3339,6 +3422,17 @@ fn start_of_month(now: chrono::DateTime<Utc>) -> chrono::DateTime<Utc> {
     Utc.with_ymd_and_hms(now.year(), now.month(), 1, 0, 0, 0)
         .single()
         .expect("valid start of month")
+}
+
+fn start_of_next_month(current_month_start: chrono::DateTime<Utc>) -> chrono::DateTime<Utc> {
+    let (year, month) = if current_month_start.month() == 12 {
+        (current_month_start.year() + 1, 1)
+    } else {
+        (current_month_start.year(), current_month_start.month() + 1)
+    };
+    Utc.with_ymd_and_hms(year, month, 1, 0, 0, 0)
+        .single()
+        .expect("valid start of next month")
 }
 
 fn start_of_day(now: chrono::DateTime<Utc>) -> chrono::DateTime<Utc> {

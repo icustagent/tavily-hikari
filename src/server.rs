@@ -2018,29 +2018,13 @@ struct AuthTokenView {
     quota_daily_limit: i64,
     quota_monthly_used: i64,
     quota_monthly_limit: i64,
-    quota_hourly_reset_at: i64,
-    quota_daily_reset_at: i64,
-    quota_monthly_reset_at: i64,
+    quota_hourly_reset_at: Option<i64>,
+    quota_daily_reset_at: Option<i64>,
+    quota_monthly_reset_at: Option<i64>,
 }
 
 impl From<AuthToken> for AuthTokenView {
     fn from(t: AuthToken) -> Self {
-        let now = Utc::now();
-        let hourly_reset_at = (now + ChronoDuration::hours(1)).timestamp();
-        let daily_reset_at = (now + ChronoDuration::hours(24)).timestamp();
-        let (next_year, next_month) = if now.month() == 12 {
-            (now.year() + 1, 1)
-        } else {
-            (now.year(), now.month() + 1)
-        };
-        let month_reset_at = if let Some(dt) = Utc
-            .with_ymd_and_hms(next_year, next_month, 1, 0, 0, 0)
-            .single()
-        {
-            dt.timestamp()
-        } else {
-            Utc::now().timestamp()
-        };
         let (
             quota_state,
             quota_hourly_used,
@@ -2085,9 +2069,9 @@ impl From<AuthToken> for AuthTokenView {
             quota_daily_limit,
             quota_monthly_used,
             quota_monthly_limit,
-            quota_hourly_reset_at: hourly_reset_at,
-            quota_daily_reset_at: daily_reset_at,
-            quota_monthly_reset_at: month_reset_at,
+            quota_hourly_reset_at: t.quota_hourly_reset_at,
+            quota_daily_reset_at: t.quota_daily_reset_at,
+            quota_monthly_reset_at: t.quota_monthly_reset_at,
         }
     }
 }

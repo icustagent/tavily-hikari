@@ -100,9 +100,9 @@ export interface AuthToken {
   quota_daily_limit: number
   quota_monthly_used: number
   quota_monthly_limit: number
-  quota_hourly_reset_at: number
-  quota_daily_reset_at: number
-  quota_monthly_reset_at: number
+  quota_hourly_reset_at: number | null
+  quota_daily_reset_at: number | null
+  quota_monthly_reset_at: number | null
 }
 
 export interface AuthTokenSecret {
