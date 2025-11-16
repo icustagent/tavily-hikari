@@ -1,6 +1,10 @@
 import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { Icon } from '@iconify/react'
+import { Chart as ChartJS, BarElement, CategoryScale, Legend, LinearScale, Tooltip, type ChartOptions } from 'chart.js'
+import { Bar } from 'react-chartjs-2'
 import { fetchTokenHourlyBuckets, rotateTokenSecret, type TokenHourlyBucket } from '../api'
+
+ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend)
 
 type Period = 'day' | 'week' | 'month'
 
@@ -889,53 +893,29 @@ function TokenLogDetails({ log, period }: { log: TokenLog; period: Period }) {
 }
 
 function HourlyChart({ data, loading }: { data: HourlyBar[]; loading: boolean }) {
-  const max = Math.max(...data.map((d) => d.success + d.system + d.external), 1)
-  const barHeight = 140
+  const labels = data.map((d) => {
+    const date = new Date(d.bucket * 1000)
+    return `${date.getHours().toString().padStart(2, '0')}:00`
+  })
+  const chartData = {
+    labels,
+    datasets: [
+      { label: '成功', data: data.map((d) => d.success), backgroundColor: '#16a34a', stack: 'requests' },
+      { label: '系统失败', data: data.map((d) => d.system), backgroundColor: '#f97316', stack: 'requests' },
+      { label: '其他失败', data: data.map((d) => d.external), backgroundColor: '#ef4444', stack: 'requests' },
+    ],
+  }
+  const options: ChartOptions<'bar'> = {
+    responsive: true,
+    plugins: { legend: { position: 'bottom' }, tooltip: { mode: 'index', intersect: false } },
+    scales: {
+      x: { stacked: true, title: { display: true, text: '小时（服务器时间）' } },
+      y: { stacked: true, beginAtZero: true, title: { display: true, text: '请求数' } },
+    },
+  }
   return (
     <div className="hourly-chart" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-        <span className="status-badge status-active" aria-hidden="true" />
-        <span>成功</span>
-        <span className="status-badge status-warning" aria-hidden="true" />
-        <span>系统触发失败</span>
-        <span className="status-badge status-error" aria-hidden="true" />
-        <span>其他失败</span>
-      </div>
-      {loading ? (
-        <div className="empty-state">Loading…</div>
-      ) : (
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, minHeight: barHeight + 32 }}>
-          {data.map((bar) => {
-            const successH = max === 0 ? 0 : (bar.success / max) * barHeight
-            const systemH = max === 0 ? 0 : (bar.system / max) * barHeight
-            const externalH = max === 0 ? 0 : (bar.external / max) * barHeight
-            const date = new Date(bar.bucket * 1000)
-            const label = `${date.getHours().toString().padStart(2, '0')}:00`
-            return (
-              <div key={bar.bucket} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-                <div
-                  aria-label={`${label} 成功 ${bar.success}, 系统失败 ${bar.system}, 其他失败 ${bar.external}`}
-                  title={`${label} 成功 ${bar.success} · 系统失败 ${bar.system} · 其他失败 ${bar.external}`}
-                  style={{
-                    width: 16,
-                    height: barHeight,
-                    display: 'flex',
-                    flexDirection: 'column-reverse',
-                    borderRadius: 4,
-                    background: bar.success + bar.system + bar.external === 0 ? '#f3f4f6' : '#e5e7eb',
-                    overflow: 'hidden',
-                  }}
-                >
-                  <div style={{ height: successH, background: '#16a34a' }} />
-                  <div style={{ height: systemH, background: '#f97316' }} />
-                  <div style={{ height: externalH, background: '#ef4444' }} />
-                </div>
-                <div style={{ fontSize: 11, color: '#6b7280' }}>{label}</div>
-              </div>
-            )
-          })}
-        </div>
-      )}
+      {loading ? <div className="empty-state">Loading…</div> : <Bar options={options} data={chartData} />}
     </div>
   )
 }
