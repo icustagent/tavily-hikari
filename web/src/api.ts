@@ -21,6 +21,20 @@ export interface TokenMetrics {
   dailyFailure: number
 }
 
+export interface TokenHourlyBucket {
+  bucket_start: number
+  success_count: number
+  system_failure_count: number
+  external_failure_count: number
+}
+
+export interface TokenUsageBucket {
+  bucket_start: number
+  success_count: number
+  system_failure_count: number
+  external_failure_count: number
+}
+
 // Public token logs (per access token)
 export interface PublicTokenLog {
   id: number
@@ -100,9 +114,9 @@ export interface AuthToken {
   quota_daily_limit: number
   quota_monthly_used: number
   quota_monthly_limit: number
-  quota_hourly_reset_at: number
-  quota_daily_reset_at: number
-  quota_monthly_reset_at: number
+  quota_hourly_reset_at: number | null
+  quota_daily_reset_at: number | null
+  quota_monthly_reset_at: number | null
 }
 
 export interface AuthTokenSecret {
@@ -370,4 +384,23 @@ export async function createTokensBatch(group: string, count: number, note?: str
 
 export function fetchTokenGroups(signal?: AbortSignal): Promise<TokenGroup[]> {
   return requestJson('/api/tokens/groups', { signal })
+}
+
+export function fetchTokenHourlyBuckets(id: string, hours = 25, signal?: AbortSignal): Promise<TokenHourlyBucket[]> {
+  const encoded = encodeURIComponent(id)
+  const params = new URLSearchParams({ hours: String(hours) })
+  return requestJson(`/api/tokens/${encoded}/metrics/hourly?${params.toString()}`, { signal })
+}
+
+export function fetchTokenUsageSeries(
+  id: string,
+  params: { since: string; until: string; bucketSecs?: number },
+  signal?: AbortSignal,
+): Promise<TokenUsageBucket[]> {
+  const encoded = encodeURIComponent(id)
+  const search = new URLSearchParams({ since: params.since, until: params.until })
+  if (params.bucketSecs != null) {
+    search.set('bucket_secs', String(params.bucketSecs))
+  }
+  return requestJson(`/api/tokens/${encoded}/metrics/usage-series?${search.toString()}`, { signal })
 }

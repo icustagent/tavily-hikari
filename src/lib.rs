@@ -1,4 +1,4 @@
-use std::{cmp::min, collections::HashMap, sync::Arc};
+use std::{cmp::min, collections::HashMap, sync::Arc, time::Duration};
 
 use bytes::Bytes;
 use chrono::{Datelike, TimeZone, Utc};
@@ -9,7 +9,7 @@ use reqwest::{
     header::{CONTENT_LENGTH, HOST, HeaderMap, HeaderValue},
 };
 use serde_json::Value;
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use sqlx::{QueryBuilder, Row, Sqlite, SqlitePool, Transaction};
 use thiserror::Error;
 use tokio::sync::Mutex;
@@ -85,6 +85,9 @@ const GRANULARITY_MINUTE: &str = "minute";
 const GRANULARITY_HOUR: &str = "hour";
 const BUCKET_RETENTION_SECS: i64 = 2 * 24 * 3600; // 48h，足够覆盖 24h 窗口
 const CLEANUP_INTERVAL_SECS: i64 = 600;
+const SECS_PER_MINUTE: i64 = 60;
+const SECS_PER_HOUR: i64 = 3600;
+const SECS_PER_DAY: i64 = 24 * SECS_PER_HOUR;
 
 #[derive(Debug, Clone)]
 struct SanitizedHeaders {
@@ -358,8 +361,45 @@ impl TavilyProxy {
         }
         let ids: Vec<String> = tokens.iter().map(|t| t.id.clone()).collect();
         let verdicts = self.token_quota.snapshot_many(&ids).await?;
+        let now = Utc::now();
+        let now_ts = now.timestamp();
+        let minute_bucket = now_ts - (now_ts % 60);
+        let hour_bucket = now_ts - (now_ts % SECS_PER_HOUR);
+        let hour_window_start = minute_bucket - 59 * 60;
+        let day_window_start = hour_bucket - 23 * SECS_PER_HOUR;
+        let hourly_oldest = self
+            .key_store
+            .earliest_usage_bucket_since_bulk(&ids, GRANULARITY_MINUTE, hour_window_start)
+            .await?;
+        let daily_oldest = self
+            .key_store
+            .earliest_usage_bucket_since_bulk(&ids, GRANULARITY_HOUR, day_window_start)
+            .await?;
+        let month_start = start_of_month(now);
+        let next_month_reset = start_of_next_month(month_start).timestamp();
         for token in tokens.iter_mut() {
             if let Some(verdict) = verdicts.get(&token.id) {
+                token.quota_hourly_reset_at = if verdict.hourly_used > 0 {
+                    hourly_oldest
+                        .get(&token.id)
+                        .copied()
+                        .map(|bucket| bucket + SECS_PER_HOUR)
+                } else {
+                    None
+                };
+                token.quota_daily_reset_at = if verdict.daily_used > 0 {
+                    daily_oldest
+                        .get(&token.id)
+                        .copied()
+                        .map(|bucket| bucket + SECS_PER_DAY)
+                } else {
+                    None
+                };
+                token.quota_monthly_reset_at = if verdict.monthly_used > 0 {
+                    Some(next_month_reset)
+                } else {
+                    None
+                };
                 token.quota = Some(verdict.clone());
             }
         }
@@ -469,6 +509,30 @@ impl TavilyProxy {
     ) -> Result<(Vec<TokenLogRecord>, i64), ProxyError> {
         self.key_store
             .fetch_token_logs_page(token_id, page, per_page, since, until)
+            .await
+    }
+
+    /// Hourly breakdown for recent N hours (success + non-success aggregated as error).
+    pub async fn token_hourly_breakdown(
+        &self,
+        token_id: &str,
+        hours: i64,
+    ) -> Result<Vec<TokenHourlyBucket>, ProxyError> {
+        self.key_store
+            .fetch_token_hourly_breakdown(token_id, hours)
+            .await
+    }
+
+    /// Generic usage series for arbitrary window and granularity.
+    pub async fn token_usage_series(
+        &self,
+        token_id: &str,
+        since: i64,
+        until: i64,
+        bucket_secs: i64,
+    ) -> Result<Vec<TokenUsageBucket>, ProxyError> {
+        self.key_store
+            .fetch_token_usage_series(token_id, since, until, bucket_secs)
             .await
     }
 
@@ -764,7 +828,9 @@ impl KeyStore {
     async fn new(database_path: &str) -> Result<Self, ProxyError> {
         let options = SqliteConnectOptions::new()
             .filename(database_path)
-            .create_if_missing(true);
+            .create_if_missing(true)
+            .journal_mode(SqliteJournalMode::Wal)
+            .busy_timeout(Duration::from_secs(5));
 
         let pool = SqlitePoolOptions::new()
             .min_connections(1)
@@ -1058,6 +1124,41 @@ impl KeyStore {
         Ok(map)
     }
 
+    async fn earliest_usage_bucket_since_bulk(
+        &self,
+        token_ids: &[String],
+        granularity: &str,
+        bucket_start_at_least: i64,
+    ) -> Result<HashMap<String, i64>, ProxyError> {
+        if token_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let mut builder = QueryBuilder::new(
+            "SELECT token_id, MIN(bucket_start) as earliest FROM token_usage_buckets WHERE granularity = ",
+        );
+        builder.push_bind(granularity);
+        builder.push(" AND bucket_start >= ");
+        builder.push_bind(bucket_start_at_least);
+        builder.push(" AND token_id IN (");
+        {
+            let mut separated = builder.separated(", ");
+            for token_id in token_ids {
+                separated.push_bind(token_id);
+            }
+        }
+        builder.push(") GROUP BY token_id");
+
+        let rows = builder
+            .build_query_as::<(String, i64)>()
+            .fetch_all(&self.pool)
+            .await?;
+        let mut map = HashMap::new();
+        for (token_id, bucket_start) in rows {
+            map.insert(token_id, bucket_start);
+        }
+        Ok(map)
+    }
+
     async fn fetch_monthly_counts(
         &self,
         token_ids: &[String],
@@ -1130,47 +1231,28 @@ impl KeyStore {
         token_id: &str,
         current_month_start: i64,
     ) -> Result<i64, ProxyError> {
-        let mut tx = self.pool.begin().await?;
-        let existing = sqlx::query_as::<_, (i64, i64)>(
-            "SELECT month_start, month_count FROM auth_token_quota WHERE token_id = ?",
+        let (_month_start, month_count): (i64, i64) = sqlx::query_as(
+            r#"
+            INSERT INTO auth_token_quota (token_id, month_start, month_count)
+            VALUES (?, ?, 1)
+            ON CONFLICT(token_id) DO UPDATE SET
+                month_start = CASE
+                    WHEN excluded.month_start > auth_token_quota.month_start THEN excluded.month_start
+                    ELSE auth_token_quota.month_start
+                END,
+                month_count = CASE
+                    WHEN excluded.month_start > auth_token_quota.month_start THEN 1
+                    ELSE auth_token_quota.month_count + 1
+                END
+            RETURNING month_start, month_count
+            "#,
         )
         .bind(token_id)
-        .fetch_optional(&mut *tx)
+        .bind(current_month_start)
+        .fetch_one(&self.pool)
         .await?;
 
-        let (month_start, new_count) = match existing {
-            None => (current_month_start, 1),
-            Some((stored_start, stored_count)) => {
-                if stored_start < current_month_start {
-                    (current_month_start, 1)
-                } else {
-                    (stored_start, stored_count + 1)
-                }
-            }
-        };
-
-        if existing.is_some() {
-            sqlx::query(
-                "UPDATE auth_token_quota SET month_start = ?, month_count = ? WHERE token_id = ?",
-            )
-            .bind(month_start)
-            .bind(new_count)
-            .bind(token_id)
-            .execute(&mut *tx)
-            .await?;
-        } else {
-            sqlx::query(
-                "INSERT INTO auth_token_quota (token_id, month_start, month_count) VALUES (?, ?, ?)",
-            )
-            .bind(token_id)
-            .bind(month_start)
-            .bind(new_count)
-            .execute(&mut *tx)
-            .await?;
-        }
-
-        tx.commit().await?;
-        Ok(new_count)
+        Ok(month_count)
     }
 
     async fn upgrade_auth_tokens_schema(&self) -> Result<(), ProxyError> {
@@ -2052,6 +2134,9 @@ impl KeyStore {
                     created_at,
                     last_used_at: last_used,
                     quota: None,
+                    quota_hourly_reset_at: None,
+                    quota_daily_reset_at: None,
+                    quota_monthly_reset_at: None,
                 },
             )
             .collect())
@@ -2105,6 +2190,9 @@ impl KeyStore {
                     created_at,
                     last_used_at: last_used,
                     quota: None,
+                    quota_hourly_reset_at: None,
+                    quota_daily_reset_at: None,
+                    quota_monthly_reset_at: None,
                 },
             )
             .collect();
@@ -2492,6 +2580,147 @@ impl KeyStore {
             .collect();
 
         Ok((items, total))
+    }
+
+    pub async fn fetch_token_hourly_breakdown(
+        &self,
+        token_id: &str,
+        hours: i64,
+    ) -> Result<Vec<TokenHourlyBucket>, ProxyError> {
+        let hours = hours.clamp(1, 168); // up to 7 days
+        let now = Utc::now().timestamp();
+        let window_start = now - hours * SECS_PER_HOUR;
+        let rows = sqlx::query_as::<_, (i64, i64, i64, i64)>(
+            r#"
+            SELECT
+                (created_at / 3600) * 3600 AS bucket_start,
+                SUM(CASE WHEN result_status = 'success' THEN 1 ELSE 0 END) AS success_count,
+                SUM(
+                    CASE
+                        WHEN result_status != 'success'
+                             AND (
+                                result_status = 'quota_exhausted'
+                                OR (http_status BETWEEN 400 AND 499)
+                                OR (mcp_status BETWEEN 400 AND 499)
+                            ) THEN 1
+                        ELSE 0
+                    END
+                ) AS system_failure_count,
+                SUM(
+                    CASE
+                        WHEN result_status != 'success'
+                             AND NOT (
+                                result_status = 'quota_exhausted'
+                                OR (http_status BETWEEN 400 AND 499)
+                                OR (mcp_status BETWEEN 400 AND 499)
+                            ) THEN 1
+                        ELSE 0
+                    END
+                ) AS external_failure_count
+            FROM auth_token_logs
+            WHERE token_id = ? AND created_at >= ?
+            GROUP BY bucket_start
+            ORDER BY bucket_start ASC
+            "#,
+        )
+        .bind(token_id)
+        .bind(window_start)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(
+                |(bucket_start, success_count, system_failure_count, external_failure_count)| {
+                    TokenHourlyBucket {
+                        bucket_start,
+                        success_count,
+                        system_failure_count,
+                        external_failure_count,
+                    }
+                },
+            )
+            .collect())
+    }
+
+    pub async fn fetch_token_usage_series(
+        &self,
+        token_id: &str,
+        since: i64,
+        until: i64,
+        bucket_secs: i64,
+    ) -> Result<Vec<TokenUsageBucket>, ProxyError> {
+        if until <= since {
+            return Err(ProxyError::Other("invalid usage window".into()));
+        }
+        if bucket_secs <= 0 {
+            return Err(ProxyError::Other("bucket_secs must be positive".into()));
+        }
+        let bucket_secs = bucket_secs.clamp(SECS_PER_MINUTE, 31 * SECS_PER_DAY);
+        let span = until - since;
+        let mut bucket_count = span / bucket_secs;
+        if span % bucket_secs != 0 {
+            bucket_count += 1;
+        }
+        if bucket_count > 1000 {
+            return Err(ProxyError::Other(
+                "requested usage series is too large".into(),
+            ));
+        }
+        let rows = sqlx::query_as::<_, (i64, i64, i64, i64)>(
+            r#"
+            SELECT
+                (created_at / ?) * ? AS bucket_start,
+                SUM(CASE WHEN result_status = 'success' THEN 1 ELSE 0 END) AS success_count,
+                SUM(
+                    CASE
+                        WHEN result_status != 'success'
+                             AND (
+                                result_status = 'quota_exhausted'
+                                OR (http_status BETWEEN 400 AND 499)
+                                OR (mcp_status BETWEEN 400 AND 499)
+                            ) THEN 1
+                        ELSE 0
+                    END
+                ) AS system_failure_count,
+                SUM(
+                    CASE
+                        WHEN result_status != 'success'
+                             AND NOT (
+                                result_status = 'quota_exhausted'
+                                OR (http_status BETWEEN 400 AND 499)
+                                OR (mcp_status BETWEEN 400 AND 499)
+                            ) THEN 1
+                        ELSE 0
+                    END
+                ) AS external_failure_count
+            FROM auth_token_logs
+            WHERE token_id = ? AND created_at >= ? AND created_at < ?
+            GROUP BY bucket_start
+            ORDER BY bucket_start ASC
+            "#,
+        )
+        .bind(bucket_secs)
+        .bind(bucket_secs)
+        .bind(token_id)
+        .bind(since)
+        .bind(until)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(
+                |(bucket_start, success_count, system_failure_count, external_failure_count)| {
+                    TokenUsageBucket {
+                        bucket_start,
+                        success_count,
+                        system_failure_count,
+                        external_failure_count,
+                    }
+                },
+            )
+            .collect())
     }
 
     async fn reset_monthly(&self) -> Result<(), ProxyError> {
@@ -3139,27 +3368,31 @@ pub struct TokenQuotaVerdict {
 
 impl TokenQuotaVerdict {
     fn new(
-        hourly_used: i64,
+        hourly_used_raw: i64,
         hourly_limit: i64,
-        daily_used: i64,
+        daily_used_raw: i64,
         daily_limit: i64,
-        monthly_used: i64,
+        monthly_used_raw: i64,
         monthly_limit: i64,
     ) -> Self {
         let mut exceeded_window = None;
         let mut allowed = true;
-        if hourly_used > hourly_limit {
+        if hourly_used_raw > hourly_limit {
             exceeded_window = Some(QuotaWindow::Hour);
             allowed = false;
         }
-        if daily_used > daily_limit {
+        if daily_used_raw > daily_limit {
             exceeded_window = Some(QuotaWindow::Day);
             allowed = false;
         }
-        if monthly_used > monthly_limit {
+        if monthly_used_raw > monthly_limit {
             exceeded_window = Some(QuotaWindow::Month);
             allowed = false;
         }
+
+        let hourly_used = min(hourly_used_raw, hourly_limit);
+        let daily_used = min(daily_used_raw, daily_limit);
+        let monthly_used = min(monthly_used_raw, monthly_limit);
         Self {
             allowed,
             exceeded_window,
@@ -3290,6 +3523,9 @@ pub struct AuthToken {
     pub created_at: i64,
     pub last_used_at: Option<i64>,
     pub quota: Option<TokenQuotaVerdict>,
+    pub quota_hourly_reset_at: Option<i64>,
+    pub quota_daily_reset_at: Option<i64>,
+    pub quota_monthly_reset_at: Option<i64>,
 }
 
 /// Full token for copy (never store prefix-only here)
@@ -3323,6 +3559,23 @@ pub struct TokenSummary {
     pub last_activity: Option<i64>,
 }
 
+#[derive(Debug, Clone)]
+pub struct TokenUsageBucket {
+    pub bucket_start: i64,
+    pub success_count: i64,
+    pub system_failure_count: i64,
+    pub external_failure_count: i64,
+}
+
+/// Hourly aggregated counts for charting.
+#[derive(Debug, Clone)]
+pub struct TokenHourlyBucket {
+    pub bucket_start: i64,
+    pub success_count: i64,
+    pub system_failure_count: i64,
+    pub external_failure_count: i64,
+}
+
 #[derive(Debug, Error)]
 pub enum ProxyError {
     #[error("invalid upstream endpoint '{endpoint}': {source}")]
@@ -3352,6 +3605,17 @@ fn start_of_month(now: chrono::DateTime<Utc>) -> chrono::DateTime<Utc> {
     Utc.with_ymd_and_hms(now.year(), now.month(), 1, 0, 0, 0)
         .single()
         .expect("valid start of month")
+}
+
+fn start_of_next_month(current_month_start: chrono::DateTime<Utc>) -> chrono::DateTime<Utc> {
+    let (year, month) = if current_month_start.month() == 12 {
+        (current_month_start.year() + 1, 1)
+    } else {
+        (current_month_start.year(), current_month_start.month() + 1)
+    };
+    Utc.with_ymd_and_hms(year, month, 1, 0, 0, 0)
+        .single()
+        .expect("valid start of next month")
 }
 
 fn start_of_day(now: chrono::DateTime<Utc>) -> chrono::DateTime<Utc> {

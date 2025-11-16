@@ -29,7 +29,7 @@ use std::time::Duration;
 use tavily_hikari::{
     ApiKeyMetrics, AuthToken, ProxyError, ProxyRequest, ProxyResponse, ProxySummary, QuotaWindow,
     RequestLogRecord, TOKEN_DAILY_LIMIT, TOKEN_HOURLY_LIMIT, TOKEN_MONTHLY_LIMIT, TavilyProxy,
-    TokenLogRecord, TokenQuotaVerdict, TokenSummary,
+    TokenHourlyBucket, TokenLogRecord, TokenQuotaVerdict, TokenSummary, TokenUsageBucket,
 };
 use tokio::signal;
 #[cfg(unix)]
@@ -1784,6 +1784,14 @@ pub async fn serve(
         // Token details
         .route("/api/tokens/:id", get(get_token_detail))
         .route("/api/tokens/:id/metrics", get(get_token_metrics))
+        .route(
+            "/api/tokens/:id/metrics/usage-series",
+            get(get_token_usage_series),
+        )
+        .route(
+            "/api/tokens/:id/metrics/hourly",
+            get(get_token_hourly_breakdown),
+        )
         .route("/api/tokens/:id/logs", get(get_token_logs))
         .route("/api/tokens/:id/logs/page", get(get_token_logs_page))
         .route("/api/tokens/:id/events", get(sse_token))
@@ -2018,29 +2026,13 @@ struct AuthTokenView {
     quota_daily_limit: i64,
     quota_monthly_used: i64,
     quota_monthly_limit: i64,
-    quota_hourly_reset_at: i64,
-    quota_daily_reset_at: i64,
-    quota_monthly_reset_at: i64,
+    quota_hourly_reset_at: Option<i64>,
+    quota_daily_reset_at: Option<i64>,
+    quota_monthly_reset_at: Option<i64>,
 }
 
 impl From<AuthToken> for AuthTokenView {
     fn from(t: AuthToken) -> Self {
-        let now = Utc::now();
-        let hourly_reset_at = (now + ChronoDuration::hours(1)).timestamp();
-        let daily_reset_at = (now + ChronoDuration::hours(24)).timestamp();
-        let (next_year, next_month) = if now.month() == 12 {
-            (now.year() + 1, 1)
-        } else {
-            (now.year(), now.month() + 1)
-        };
-        let month_reset_at = if let Some(dt) = Utc
-            .with_ymd_and_hms(next_year, next_month, 1, 0, 0, 0)
-            .single()
-        {
-            dt.timestamp()
-        } else {
-            Utc::now().timestamp()
-        };
         let (
             quota_state,
             quota_hourly_used,
@@ -2085,9 +2077,9 @@ impl From<AuthToken> for AuthTokenView {
             quota_daily_limit,
             quota_monthly_used,
             quota_monthly_limit,
-            quota_hourly_reset_at: hourly_reset_at,
-            quota_daily_reset_at: daily_reset_at,
-            quota_monthly_reset_at: month_reset_at,
+            quota_hourly_reset_at: t.quota_hourly_reset_at,
+            quota_daily_reset_at: t.quota_daily_reset_at,
+            quota_monthly_reset_at: t.quota_monthly_reset_at,
         }
     }
 }
@@ -2275,6 +2267,11 @@ struct TokenLogsQuery {
     before: Option<i64>,
 }
 
+#[derive(Debug, Deserialize)]
+struct TokenHourlyQuery {
+    hours: Option<i64>,
+}
+
 async fn get_token_logs(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
@@ -2319,6 +2316,22 @@ struct TokenLogsPageView {
     page: usize,
     per_page: usize,
     total: i64,
+}
+
+#[derive(Debug, Serialize)]
+struct TokenHourlyBucketView {
+    bucket_start: i64,
+    success_count: i64,
+    system_failure_count: i64,
+    external_failure_count: i64,
+}
+
+#[derive(Debug, Serialize)]
+struct TokenUsageBucketView {
+    bucket_start: i64,
+    success_count: i64,
+    system_failure_count: i64,
+    external_failure_count: i64,
 }
 
 async fn get_token_logs_page(
@@ -2368,6 +2381,107 @@ async fn get_token_logs_page(
             })
         })
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn get_token_hourly_breakdown(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    Query(q): Query<TokenHourlyQuery>,
+) -> Result<Json<Vec<TokenHourlyBucketView>>, StatusCode> {
+    if !state.dev_open_admin && !state.forward_auth.is_request_admin(&headers) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    let hours = q.hours.unwrap_or(25);
+    state
+        .proxy
+        .token_hourly_breakdown(&id, hours)
+        .await
+        .map(|buckets| {
+            Json(
+                buckets
+                    .into_iter()
+                    .map(
+                        |TokenHourlyBucket {
+                             bucket_start,
+                             success_count,
+                             system_failure_count,
+                             external_failure_count,
+                         }| TokenHourlyBucketView {
+                            bucket_start,
+                            success_count,
+                            system_failure_count,
+                            external_failure_count,
+                        },
+                    )
+                    .collect(),
+            )
+        })
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+#[derive(Debug, Deserialize)]
+struct UsageSeriesQuery {
+    since: Option<String>,
+    until: Option<String>,
+    bucket_secs: Option<i64>,
+}
+
+async fn get_token_usage_series(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    Query(q): Query<UsageSeriesQuery>,
+) -> Result<Json<Vec<TokenUsageBucketView>>, StatusCode> {
+    if !state.dev_open_admin && !state.forward_auth.is_request_admin(&headers) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    let now = Utc::now().timestamp();
+    let until = q
+        .until
+        .as_deref()
+        .and_then(parse_iso_timestamp)
+        .unwrap_or(now);
+    let default_since = until - ChronoDuration::hours(25).num_seconds();
+    let since = q
+        .since
+        .as_deref()
+        .and_then(parse_iso_timestamp)
+        .unwrap_or(default_since);
+    if until <= since {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let bucket_secs = q
+        .bucket_secs
+        .unwrap_or(ChronoDuration::hours(1).num_seconds());
+    state
+        .proxy
+        .token_usage_series(&id, since, until, bucket_secs)
+        .await
+        .map(|series| {
+            Json(
+                series
+                    .into_iter()
+                    .map(
+                        |TokenUsageBucket {
+                             bucket_start,
+                             success_count,
+                             system_failure_count,
+                             external_failure_count,
+                         }| TokenUsageBucketView {
+                            bucket_start,
+                            success_count,
+                            system_failure_count,
+                            external_failure_count,
+                        },
+                    )
+                    .collect(),
+            )
+        })
+        .map_err(|err| match err {
+            ProxyError::Other(_) => StatusCode::BAD_REQUEST,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        })
 }
 
 async fn get_token_detail(
@@ -2553,12 +2667,11 @@ async fn proxy_handler(
         .and_then(|rest| rest.split('-').next())
         .map(|s| s.to_string());
 
-    if !state.dev_open_admin
-        && let Some(tid) = token_id.as_deref()
-    {
+    let mut _quota_verdict: Option<TokenQuotaVerdict> = None;
+    if let Some(tid) = token_id.as_deref() {
         match state.proxy.check_token_quota(tid).await {
             Ok(verdict) => {
-                if !verdict.allowed {
+                if !state.dev_open_admin && !verdict.allowed {
                     let message = build_quota_error_message(&verdict);
                     let _ = state
                         .proxy
@@ -2569,13 +2682,14 @@ async fn proxy_handler(
                             parts.uri.query(),
                             Some(StatusCode::TOO_MANY_REQUESTS.as_u16() as i64),
                             None,
-                            "quota_exceeded",
+                            "quota_exhausted",
                             Some(&message),
                         )
                         .await;
                     let response = quota_exceeded_response(&verdict)?;
                     return Ok(response);
                 }
+                _quota_verdict = Some(verdict);
             }
             Err(err) => {
                 eprintln!("quota check failed: {err}");
@@ -2619,6 +2733,10 @@ async fn proxy_handler(
                             }
                         }
                     }
+                }
+
+                if result_status == "success" && !resp.status.is_success() {
+                    result_status = "error";
                 }
 
                 let http_code = resp.status.as_u16() as i64;
