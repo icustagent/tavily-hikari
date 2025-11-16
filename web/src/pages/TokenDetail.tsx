@@ -46,7 +46,8 @@ interface TokenLog {
 interface HourlyBar {
   bucket: number
   success: number
-  error: number
+  system: number
+  external: number
 }
 
 const numberFormatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
@@ -248,7 +249,8 @@ function buildHourlyBarsRaw(buckets: TokenHourlyBucket[]): HourlyBar[] {
     out.push({
       bucket,
       success: found?.success_count ?? 0,
-      error: found?.error_count ?? 0,
+      system: found?.system_failure_count ?? 0,
+      external: found?.external_failure_count ?? 0,
     })
   }
   return out
@@ -887,15 +889,17 @@ function TokenLogDetails({ log, period }: { log: TokenLog; period: Period }) {
 }
 
 function HourlyChart({ data, loading }: { data: HourlyBar[]; loading: boolean }) {
-  const max = Math.max(...data.map((d) => d.success + d.error), 1)
+  const max = Math.max(...data.map((d) => d.success + d.system + d.external), 1)
   const barHeight = 140
   return (
     <div className="hourly-chart" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
         <span className="status-badge status-active" aria-hidden="true" />
         <span>成功</span>
+        <span className="status-badge status-warning" aria-hidden="true" />
+        <span>系统触发失败</span>
         <span className="status-badge status-error" aria-hidden="true" />
-        <span>失败 / 其他</span>
+        <span>其他失败</span>
       </div>
       {loading ? (
         <div className="empty-state">Loading…</div>
@@ -903,26 +907,28 @@ function HourlyChart({ data, loading }: { data: HourlyBar[]; loading: boolean })
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, minHeight: barHeight + 32 }}>
           {data.map((bar) => {
             const successH = max === 0 ? 0 : (bar.success / max) * barHeight
-            const errorH = max === 0 ? 0 : (bar.error / max) * barHeight
+            const systemH = max === 0 ? 0 : (bar.system / max) * barHeight
+            const externalH = max === 0 ? 0 : (bar.external / max) * barHeight
             const date = new Date(bar.bucket * 1000)
             const label = `${date.getHours().toString().padStart(2, '0')}:00`
             return (
               <div key={bar.bucket} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
                 <div
-                  aria-label={`${label} 成功 ${bar.success}, 失败 ${bar.error}`}
-                  title={`${label} 成功 ${bar.success} · 失败 ${bar.error}`}
+                  aria-label={`${label} 成功 ${bar.success}, 系统失败 ${bar.system}, 其他失败 ${bar.external}`}
+                  title={`${label} 成功 ${bar.success} · 系统失败 ${bar.system} · 其他失败 ${bar.external}`}
                   style={{
                     width: 16,
                     height: barHeight,
                     display: 'flex',
                     flexDirection: 'column-reverse',
                     borderRadius: 4,
-                    background: bar.success + bar.error === 0 ? '#f3f4f6' : '#e5e7eb',
+                    background: bar.success + bar.system + bar.external === 0 ? '#f3f4f6' : '#e5e7eb',
                     overflow: 'hidden',
                   }}
                 >
                   <div style={{ height: successH, background: '#16a34a' }} />
-                  <div style={{ height: errorH, background: '#ef4444' }} />
+                  <div style={{ height: systemH, background: '#f97316' }} />
+                  <div style={{ height: externalH, background: '#ef4444' }} />
                 </div>
                 <div style={{ fontSize: 11, color: '#6b7280' }}>{label}</div>
               </div>

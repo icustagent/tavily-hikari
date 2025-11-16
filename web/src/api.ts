@@ -24,7 +24,8 @@ export interface TokenMetrics {
 export interface TokenHourlyBucket {
   bucket_start: number
   success_count: number
-  error_count: number
+  system_failure_count: number
+  external_failure_count: number
 }
 
 // Public token logs (per access token)
