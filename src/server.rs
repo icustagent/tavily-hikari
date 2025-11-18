@@ -290,6 +290,85 @@ fn spawn_quota_sync_scheduler(state: Arc<AppState>) {
     });
 }
 
+fn spawn_token_usage_rollup_scheduler(state: Arc<AppState>) {
+    tokio::spawn(async move {
+        loop {
+            let job_id = match state
+                .proxy
+                .scheduled_job_start("token_usage_rollup", None, 1)
+                .await
+            {
+                Ok(id) => id,
+                Err(err) => {
+                    eprintln!("token-usage-rollup: start job error: {err}");
+                    tokio::time::sleep(Duration::from_secs(300)).await;
+                    continue;
+                }
+            };
+
+            match state.proxy.rollup_token_usage_stats().await {
+                Ok((rows, last_ts)) => {
+                    let msg = match last_ts {
+                        Some(ts) => format!("rows={rows} last_rollup_ts={ts}"),
+                        None => format!("rows={rows} last_rollup_ts=none"),
+                    };
+                    let _ = state
+                        .proxy
+                        .scheduled_job_finish(job_id, "success", Some(&msg))
+                        .await;
+                }
+                Err(err) => {
+                    let _ = state
+                        .proxy
+                        .scheduled_job_finish(job_id, "error", Some(&err.to_string()))
+                        .await;
+                }
+            }
+
+            // Run rollup every 5 minutes to keep charts reasonably fresh
+            tokio::time::sleep(Duration::from_secs(300)).await;
+        }
+    });
+}
+
+fn spawn_auth_token_logs_gc_scheduler(state: Arc<AppState>) {
+    tokio::spawn(async move {
+        loop {
+            let job_id = match state
+                .proxy
+                .scheduled_job_start("auth_token_logs_gc", None, 1)
+                .await
+            {
+                Ok(id) => id,
+                Err(err) => {
+                    eprintln!("auth-token-logs-gc: start job error: {err}");
+                    tokio::time::sleep(Duration::from_secs(3600)).await;
+                    continue;
+                }
+            };
+
+            match state.proxy.gc_auth_token_logs().await {
+                Ok(deleted) => {
+                    let msg = format!("deleted_rows={deleted}");
+                    let _ = state
+                        .proxy
+                        .scheduled_job_finish(job_id, "success", Some(&msg))
+                        .await;
+                }
+                Err(err) => {
+                    let _ = state
+                        .proxy
+                        .scheduled_job_finish(job_id, "error", Some(&err.to_string()))
+                        .await;
+                }
+            }
+
+            // Run GC once per hour; retention window is enforced inside the proxy.
+            tokio::time::sleep(Duration::from_secs(3600)).await;
+        }
+    });
+}
+
 // kept for potential future direct serving; currently ServeDir handles '/'
 #[allow(dead_code)]
 async fn load_spa_response(
@@ -1875,8 +1954,10 @@ pub async fn serve(
     let bound_addr = listener.local_addr()?;
     println!("Tavily proxy listening on http://{bound_addr}");
 
-    // Spawn quota/usage sync scheduler (background)
+    // Spawn background schedulers
     spawn_quota_sync_scheduler(state.clone());
+    spawn_token_usage_rollup_scheduler(state.clone());
+    spawn_auth_token_logs_gc_scheduler(state.clone());
 
     axum::serve(
         listener,

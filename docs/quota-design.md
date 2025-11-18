@@ -224,10 +224,10 @@
 
 6. **启用 `auth_token_logs` 保留策略**
    - 在确认聚合表和新读路径稳定后，引入后台清理任务：
-     - 仅保留最近 N 天的 `auth_token_logs` 记录；
-     - 对关闭 / 删除的 token，可以进一步删除其全部历史日志；
+     - 仅依据时间保留策略清理日志，例如仅保留最近 N 天的 `auth_token_logs` 记录；
+     - 不根据 access token 的启用 / 禁用 / 删除状态删除日志，以避免影响审计与追溯能力；
      - 按需触发 `VACUUM` 或使用 `auto_vacuum` 控制数据库文件大小。
    - 在此模式下：
      - 配额判断依旧依赖 `token_usage_buckets` 与 `auth_token_quota`；
      - 所有展示性用量数据来自聚合表或 `request_logs`；
-     - `auth_token_logs` 仅作为“短期可观测性 + 最近记录列表”的数据源。
+     - `auth_token_logs` 仅作为“短期可观测性 + 最近记录列表”的数据源，在保留期内保持完整。
