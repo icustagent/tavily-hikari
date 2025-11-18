@@ -224,8 +224,13 @@ export interface JobLogView {
   finished_at: number | null
 }
 
-export function fetchJobs(limit = 100, signal?: AbortSignal): Promise<JobLogView[]> {
+export type JobGroup = 'all' | 'quota' | 'logs'
+
+export function fetchJobs(limit = 100, group: JobGroup = 'all', signal?: AbortSignal): Promise<JobLogView[]> {
   const params = new URLSearchParams({ limit: String(limit) })
+  if (group !== 'all') {
+    params.set('group', group)
+  }
   return requestJson(`/api/jobs?${params.toString()}`, { signal })
 }
 

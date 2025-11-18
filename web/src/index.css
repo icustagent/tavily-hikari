@@ -522,6 +522,36 @@ button {
   font-size: 0.85rem;
 }
 
+/* Admin: segmented tags for job filters */
+.segmented-control {
+  display: inline-flex;
+  gap: 8px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.04);
+}
+
+.segmented-control button {
+  border: none;
+  background: transparent;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  color: #4b5563;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.segmented-control button.active {
+  background: #111827;
+  color: #f9fafb;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.35);
+}
+
+.segmented-control button:hover {
+  background: rgba(15, 23, 42, 0.08);
+}
+
 .update-banner-actions {
   display: flex;
   gap: 8px;

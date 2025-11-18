@@ -1013,6 +1013,7 @@ async fn compute_signatures(
 #[derive(Deserialize)]
 struct JobsQuery {
     limit: Option<usize>,
+    group: Option<String>,
 }
 
 async fn list_jobs(
@@ -1024,14 +1025,19 @@ async fn list_jobs(
         return Err(StatusCode::FORBIDDEN);
     }
     let limit = q.limit.unwrap_or(100).clamp(1, 500);
+    let group = q.group.as_deref().unwrap_or("all");
     state
         .proxy
         .list_recent_jobs(limit)
         .await
         .map(|items| {
+            let filtered = items.into_iter().filter(|j| match group {
+                "quota" => j.job_type == "quota_sync" || j.job_type == "quota_sync/manual",
+                "logs" => j.job_type == "auth_token_logs_gc",
+                _ => true,
+            });
             Json(
-                items
-                    .into_iter()
+                filtered
                     .map(|j| JobLogView {
                         id: j.id,
                         job_type: j.job_type,

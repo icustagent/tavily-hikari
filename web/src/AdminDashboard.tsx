@@ -376,7 +376,7 @@ function AdminDashboard(): JSX.Element {
               }) as Paginated<AuthToken>,
           ),
           fetchTokenGroups(signal).catch(() => [] as TokenGroup[]),
-          fetchJobs(50, signal).catch(() => []),
+          fetchJobs(50, jobFilter, signal).catch(() => []),
         ])
 
         if (signal?.aborted) {
@@ -418,7 +418,7 @@ function AdminDashboard(): JSX.Element {
         }
       }
   },
-    [tokensPage, selectedTokenGroupName, selectedTokenUngrouped],
+    [tokensPage, selectedTokenGroupName, selectedTokenUngrouped, jobFilter],
   )
 
   useEffect(() => {
@@ -1436,21 +1436,21 @@ function AdminDashboard(): JSX.Element {
                 className={jobFilter === 'all' ? 'active' : ''}
                 onClick={() => setJobFilter('all')}
               >
-                All
+                全部
               </button>
               <button
                 type="button"
                 className={jobFilter === 'quota' ? 'active' : ''}
                 onClick={() => setJobFilter('quota')}
               >
-                Sync Quota
+                同步额度
               </button>
               <button
                 type="button"
                 className={jobFilter === 'logs' ? 'active' : ''}
                 onClick={() => setJobFilter('logs')}
               >
-                Clean Access Logs
+                清理访问记录
               </button>
             </div>
           </div>
@@ -1473,18 +1473,7 @@ function AdminDashboard(): JSX.Element {
                 </tr>
               </thead>
               <tbody>
-                {jobs
-                  .filter((j) => {
-                    const jt = (j as any).job_type ?? (j as any).jobType ?? ''
-                    if (jobFilter === 'quota') {
-                      return jt === 'quota_sync' || jt === 'quota_sync/manual'
-                    }
-                    if (jobFilter === 'logs') {
-                      return jt === 'auth_token_logs_gc'
-                    }
-                    return true
-                  })
-                  .map((j) => {
+                {jobs.map((j) => {
                   const job: any = j as any
                   const jt = job.job_type ?? job.jobType ?? ''
                   const keyId = job.key_id ?? job.keyId ?? '—'
