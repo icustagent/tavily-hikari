@@ -1644,6 +1644,50 @@ tbody tr:hover {
   white-space: normal;
 }
 
+/* Job type detail pill with hover bubble showing raw code */
+.job-type-pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.job-type-trigger {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.job-type-main {
+  font-size: 0.92rem;
+}
+
+.job-type-bubble {
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%) scale(0.95);
+  background: #0f172a;
+  color: #fff;
+  padding: 3px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+  font-size: 0.8rem;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 5;
+}
+
+.job-type-pill:hover .job-type-bubble,
+.job-type-pill:focus-within .job-type-bubble {
+  opacity: 1;
+  transform: translateY(-50%) scale(1);
+}
+
 .log-details-row td {
   background: rgba(241, 245, 249, 0.6);
   border-bottom: none;

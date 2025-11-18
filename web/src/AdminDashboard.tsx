@@ -1602,7 +1602,22 @@ function AdminDashboard(): JSX.Element {
                               </div>
                               <div>
                                 <div className="log-details-label">{jobsStrings.table.type}</div>
-                                <div className="log-details-value">{jt || '—'}</div>
+                                <div className="log-details-value">
+                                  {jt ? (
+                                    <span className="job-type-pill">
+                                      <button
+                                        type="button"
+                                        className="job-type-trigger"
+                                        aria-label={jt}
+                                      >
+                                        <span className="job-type-main">{jobTypeLabel}</span>
+                                      </button>
+                                      <div className="job-type-bubble">{jt}</div>
+                                    </span>
+                                  ) : (
+                                    '—'
+                                  )}
+                                </div>
                               </div>
                               <div>
                                 <div className="log-details-label">{jobsStrings.table.key}</div>
