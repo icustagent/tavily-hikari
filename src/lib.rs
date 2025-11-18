@@ -844,6 +844,17 @@ impl TavilyProxy {
     pub async fn list_recent_jobs(&self, limit: usize) -> Result<Vec<JobLog>, ProxyError> {
         self.key_store.list_recent_jobs(limit).await
     }
+
+    pub async fn list_recent_jobs_paginated(
+        &self,
+        group: &str,
+        page: usize,
+        per_page: usize,
+    ) -> Result<(Vec<JobLog>, i64), ProxyError> {
+        self.key_store
+            .list_recent_jobs_paginated(group, page, per_page)
+            .await
+    }
 }
 
 #[derive(Debug)]
@@ -3397,6 +3408,63 @@ impl KeyStore {
             })
             .collect::<Result<Vec<_>, _>>()?;
         Ok(items)
+    }
+
+    async fn list_recent_jobs_paginated(
+        &self,
+        group: &str,
+        page: usize,
+        per_page: usize,
+    ) -> Result<(Vec<JobLog>, i64), ProxyError> {
+        let page = page.max(1);
+        let per_page = per_page.clamp(1, 100) as i64;
+        let offset = ((page - 1) as i64).saturating_mul(per_page);
+
+        let where_clause = match group {
+            "quota" => "WHERE job_type = 'quota_sync' OR job_type = 'quota_sync/manual'",
+            "logs" => "WHERE job_type = 'auth_token_logs_gc'",
+            _ => "",
+        };
+
+        let count_query = format!("SELECT COUNT(*) FROM scheduled_jobs {}", where_clause);
+        let total: i64 = sqlx::query_scalar(&count_query)
+            .fetch_one(&self.pool)
+            .await?;
+
+        let select_query = format!(
+            r#"
+            SELECT id, job_type, key_id, status, attempt, message, started_at, finished_at
+            FROM scheduled_jobs
+            {}
+            ORDER BY started_at DESC, id DESC
+            LIMIT ? OFFSET ?
+            "#,
+            where_clause
+        );
+
+        let rows = sqlx::query(&select_query)
+            .bind(per_page)
+            .bind(offset)
+            .fetch_all(&self.pool)
+            .await?;
+
+        let items = rows
+            .into_iter()
+            .map(|row| -> Result<JobLog, sqlx::Error> {
+                Ok(JobLog {
+                    id: row.try_get("id")?,
+                    job_type: row.try_get("job_type")?,
+                    key_id: row.try_get::<Option<String>, _>("key_id")?,
+                    status: row.try_get("status")?,
+                    attempt: row.try_get("attempt")?,
+                    message: row.try_get::<Option<String>, _>("message")?,
+                    started_at: row.try_get("started_at")?,
+                    finished_at: row.try_get::<Option<i64>, _>("finished_at")?,
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok((items, total))
     }
 
     async fn get_meta_i64(&self, key: &str) -> Result<Option<i64>, ProxyError> {

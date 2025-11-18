@@ -226,8 +226,16 @@ export interface JobLogView {
 
 export type JobGroup = 'all' | 'quota' | 'logs'
 
-export function fetchJobs(limit = 100, group: JobGroup = 'all', signal?: AbortSignal): Promise<JobLogView[]> {
-  const params = new URLSearchParams({ limit: String(limit) })
+export function fetchJobs(
+  page = 1,
+  perPage = 10,
+  group: JobGroup = 'all',
+  signal?: AbortSignal,
+): Promise<Paginated<JobLogView>> {
+  const params = new URLSearchParams({
+    page: String(page),
+    per_page: String(perPage),
+  })
   if (group !== 'all') {
     params.set('group', group)
   }

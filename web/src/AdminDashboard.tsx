@@ -251,6 +251,9 @@ function AdminDashboard(): JSX.Element {
   const [logs, setLogs] = useState<RequestLog[]>([])
   const [jobs, setJobs] = useState<import('./api').JobLogView[]>([])
   const [jobFilter, setJobFilter] = useState<'all' | 'quota' | 'logs'>('all')
+  const [jobsPage, setJobsPage] = useState(1)
+  const jobsPerPage = 10
+  const [jobsTotal, setJobsTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const pollingTimerRef = useRef<number | null>(null)
@@ -430,19 +433,21 @@ function AdminDashboard(): JSX.Element {
   // Jobs list: refetch when filter changes
   useEffect(() => {
     const controller = new AbortController()
-    fetchJobs(50, jobFilter, controller.signal)
-      .then((jobsData) => {
+    fetchJobs(jobsPage, jobsPerPage, jobFilter, controller.signal)
+      .then((result) => {
         if (!controller.signal.aborted) {
-          setJobs(jobsData)
+          setJobs(result.items)
+          setJobsTotal(result.total)
         }
       })
       .catch(() => {
         if (!controller.signal.aborted) {
           setJobs([])
+          setJobsTotal(0)
         }
       })
     return () => controller.abort()
-  }, [jobFilter])
+  }, [jobFilter, jobsPage])
 
   // Automatic fallback polling when SSE is not connected
   useEffect(() => {
@@ -1554,6 +1559,29 @@ function AdminDashboard(): JSX.Element {
             </table>
           )}
         </div>
+        {jobsTotal > jobsPerPage && (
+          <div className="table-pagination">
+            <span className="panel-description">
+              {jobsStrings.description} ({jobsPage} / {Math.max(1, Math.ceil(jobsTotal / jobsPerPage))})
+            </span>
+            <div style={{ display: 'inline-flex', gap: 8 }}>
+              <button
+                className="button"
+                onClick={() => setJobsPage((p) => Math.max(1, p - 1))}
+                disabled={jobsPage <= 1}
+              >
+                {tokenStrings.pagination.prev}
+              </button>
+              <button
+                className="button"
+                onClick={() => setJobsPage((p) => p + 1)}
+                disabled={jobsPage >= Math.ceil(jobsTotal / jobsPerPage)}
+              >
+                {tokenStrings.pagination.next}
+              </button>
+            </div>
+          </div>
+        )}
       </section>
 
       <div className="app-footer">

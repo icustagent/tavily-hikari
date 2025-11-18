@@ -1014,42 +1014,55 @@ async fn compute_signatures(
 struct JobsQuery {
     limit: Option<usize>,
     group: Option<String>,
+    page: Option<usize>,
+    per_page: Option<usize>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PaginatedJobsView {
+    items: Vec<JobLogView>,
+    total: i64,
+    page: usize,
+    per_page: usize,
 }
 
 async fn list_jobs(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Query(q): Query<JobsQuery>,
-) -> Result<Json<Vec<JobLogView>>, StatusCode> {
+) -> Result<Json<PaginatedJobsView>, StatusCode> {
     if !state.dev_open_admin && !state.forward_auth.is_request_admin(&headers) {
         return Err(StatusCode::FORBIDDEN);
     }
-    let limit = q.limit.unwrap_or(100).clamp(1, 500);
+    let page = q.page.unwrap_or(1).max(1);
+    let per_page = q.per_page.or(q.limit).unwrap_or(10).clamp(1, 100);
     let group = q.group.as_deref().unwrap_or("all");
+
     state
         .proxy
-        .list_recent_jobs(limit)
+        .list_recent_jobs_paginated(group, page, per_page)
         .await
-        .map(|items| {
-            let filtered = items.into_iter().filter(|j| match group {
-                "quota" => j.job_type == "quota_sync" || j.job_type == "quota_sync/manual",
-                "logs" => j.job_type == "auth_token_logs_gc",
-                _ => true,
-            });
-            Json(
-                filtered
-                    .map(|j| JobLogView {
-                        id: j.id,
-                        job_type: j.job_type,
-                        key_id: j.key_id,
-                        status: j.status,
-                        attempt: j.attempt,
-                        message: j.message,
-                        started_at: j.started_at,
-                        finished_at: j.finished_at,
-                    })
-                    .collect(),
-            )
+        .map(|(items, total)| {
+            let view_items = items
+                .into_iter()
+                .map(|j| JobLogView {
+                    id: j.id,
+                    job_type: j.job_type,
+                    key_id: j.key_id,
+                    status: j.status,
+                    attempt: j.attempt,
+                    message: j.message,
+                    started_at: j.started_at,
+                    finished_at: j.finished_at,
+                })
+                .collect();
+            Json(PaginatedJobsView {
+                items: view_items,
+                total,
+                page,
+                per_page,
+            })
         })
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
