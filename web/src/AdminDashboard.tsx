@@ -281,6 +281,7 @@ function AdminDashboard(): JSX.Element {
   const [editingTokenNote, setEditingTokenNote] = useState('')
   const [savingTokenNote, setSavingTokenNote] = useState(false)
   const [sseConnected, setSseConnected] = useState(false)
+  const [expandedJobs, setExpandedJobs] = useState<Set<number>>(() => new Set())
   // Batch dialog state
   const batchDialogRef = useRef<HTMLDialogElement | null>(null)
   const [batchGroup, setBatchGroup] = useState('')
@@ -430,7 +431,7 @@ function AdminDashboard(): JSX.Element {
     return () => controller.abort()
   }, [loadData])
 
-  // Jobs list: refetch when filter changes
+  // Jobs list: refetch when filter or page changes
   useEffect(() => {
     const controller = new AbortController()
     fetchJobs(jobsPage, jobsPerPage, jobFilter, controller.signal)
@@ -438,6 +439,15 @@ function AdminDashboard(): JSX.Element {
         if (!controller.signal.aborted) {
           setJobs(result.items)
           setJobsTotal(result.total)
+          setExpandedJobs((previous) => {
+            if (previous.size === 0) return new Set()
+            const visibleIds = new Set(result.items.map((item) => item.id))
+            const next = new Set<number>()
+            for (const id of previous) {
+              if (visibleIds.has(id)) next.add(id)
+            }
+            return next
+          })
         }
       })
       .catch(() => {
@@ -652,20 +662,29 @@ function AdminDashboard(): JSX.Element {
 
   const displayName = profile?.displayName ?? null
 
-  const toggleLogExpansion = useCallback(
-    (id: number) => {
-      setExpandedLogs((previous) => {
-        const next = new Set(previous)
-        if (next.has(id)) {
-          next.delete(id)
-        } else {
-          next.add(id)
-        }
-        return next
-      })
-    },
-    [],
-  )
+  const toggleLogExpansion = useCallback((id: number) => {
+    setExpandedLogs((previous) => {
+      const next = new Set(previous)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }, [])
+
+  const toggleJobExpansion = useCallback((id: number) => {
+    setExpandedJobs((previous) => {
+      const next = new Set(previous)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }, [])
 
   const handleAddKey = async () => {
     const value = newKey.trim()
@@ -1080,11 +1099,11 @@ function AdminDashboard(): JSX.Element {
             </div>
           </div>
         )}
-        <div className="table-wrapper">
+        <div className="table-wrapper jobs-table-wrapper">
           {tokenList.length === 0 ? (
             <div className="empty-state">{loading ? tokenStrings.empty.loading : tokenStrings.empty.none}</div>
           ) : (
-            <table>
+            <table className="jobs-table">
               <thead>
                 <tr>
                   <th>{tokenStrings.table.id}</th>
@@ -1145,7 +1164,7 @@ function AdminDashboard(): JSX.Element {
                       </td>
                       <td>{formatTimestamp(t.last_used_at)}</td>
                       {isAdmin && (
-                        <td>
+                        <td className="jobs-message-cell">
                           <div style={{ display: 'flex', gap: 8 }}>
                             <button
                               type="button"
@@ -1285,7 +1304,7 @@ function AdminDashboard(): JSX.Element {
             )}
           </div>
         </div>
-        <div className="table-wrapper">
+        <div className="table-wrapper jobs-table-wrapper">
           {sortedKeys.length === 0 ? (
             <div className="empty-state">{loading ? keyStrings.empty.loading : keyStrings.empty.none}</div>
           ) : (
@@ -1502,7 +1521,7 @@ function AdminDashboard(): JSX.Element {
                   const keyId = job.key_id ?? job.keyId ?? '—'
                   const started: number | null = job.started_at ?? job.startedAt ?? null
                   const finished: number | null = job.finished_at ?? job.finishedAt ?? null
-                  const startedTimeLabel = formatClockTime(started)
+                  const startedTimeLabel = formatTimestamp(started)
                   const finishedTimeLabel = formatClockTime(finished)
                   const startedDetail =
                     started != null
@@ -1512,48 +1531,154 @@ function AdminDashboard(): JSX.Element {
                     finished != null
                       ? `${formatTimestampWithMs(finished)} · ${formatRelativeTime(finished)}`
                       : jobsStrings.empty.none
-                  return (
+                  const isExpanded = expandedJobs.has(j.id)
+                  const jobMessage: string | null = j.message ?? null
+                  const messageLabel = isExpanded
+                    ? jobsStrings.toggles?.hide ?? jobsStrings.table.message
+                    : jobsStrings.toggles?.show ?? jobsStrings.table.message
+                  const duration =
+                    started != null && finished != null
+                      ? (() => {
+                          const seconds = Math.max(0, finished - started)
+                          if (seconds < 60) return `${seconds}s`
+                          const minutes = Math.round(seconds / 60)
+                          return `${minutes}m`
+                        })()
+                      : null
+                  const startedSummary =
+                    started != null ? `${formatTimestampWithMs(started)} · ${formatRelativeTime(started)}` : null
+                  const finishedSummary =
+                    finished != null ? `${formatTimestampWithMs(finished)} · ${formatRelativeTime(finished)}` : null
+                  const rows: JSX.Element[] = []
+
+                  rows.push(
                     <tr key={j.id}>
-                      <td>{j.id}</td>
-                      <td>{jt}</td>
-                      <td>{keyId ?? '—'}</td>
-                      <td><span className={statusClass(j.status)}>{j.status}</span></td>
-                      <td>{j.attempt}</td>
-                      <td>
-                        {started ? (
-                          <div className="log-time-cell">
+                        <td>{j.id}</td>
+                        <td>{jt}</td>
+                        <td>{keyId ?? '—'}</td>
+                        <td>
+                          <span className={statusClass(j.status)}>{j.status}</span>
+                        </td>
+                        <td>{j.attempt}</td>
+                        <td>
+                          {started ? (
+                            <div className="log-time-cell">
+                              <button
+                                type="button"
+                                className="log-time-trigger"
+                                aria-label={startedDetail}
+                              >
+                                <span className="log-time-main">{startedTimeLabel}</span>
+                              </button>
+                              <div className="log-time-bubble">{startedDetail}</div>
+                            </div>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                        <td>
+                          {finished ? (
+                            <div className="log-time-cell">
+                              <button
+                                type="button"
+                                className="log-time-trigger"
+                                aria-label={finishedDetail}
+                              >
+                                <span className="log-time-main">{finishedTimeLabel}</span>
+                              </button>
+                              <div className="log-time-bubble">{finishedDetail}</div>
+                            </div>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                        <td>
+                          {jobMessage ? (
                             <button
                               type="button"
-                              className="log-time-trigger"
-                              aria-label={startedDetail}
+                              className={`jobs-message-button${isExpanded ? ' jobs-message-button-active' : ''}`}
+                              onClick={() => toggleJobExpansion(j.id)}
+                              aria-expanded={isExpanded}
+                              aria-controls={`job-details-${j.id}`}
+                              aria-label={messageLabel}
+                              title={jobMessage}
                             >
-                              <span className="log-time-main">{startedTimeLabel}</span>
+                              <span className="jobs-message-text">{jobMessage}</span>
+                              <Icon
+                                icon={isExpanded ? 'mdi:chevron-up' : 'mdi:chevron-down'}
+                                width={16}
+                                height={16}
+                                className="jobs-message-icon"
+                                aria-hidden="true"
+                              />
                             </button>
-                            <div className="log-time-bubble">{startedDetail}</div>
-                          </div>
-                        ) : (
-                          '—'
-                        )}
-                      </td>
-                      <td>
-                        {finished ? (
-                          <div className="log-time-cell">
-                            <button
-                              type="button"
-                              className="log-time-trigger"
-                              aria-label={finishedDetail}
-                            >
-                              <span className="log-time-main">{finishedTimeLabel}</span>
-                            </button>
-                            <div className="log-time-bubble">{finishedDetail}</div>
-                          </div>
-                        ) : (
-                          '—'
-                        )}
-                      </td>
-                      <td>{j.message ?? '—'}</td>
-                    </tr>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                      </tr>,
                   )
+
+                  if (isExpanded) {
+                    rows.push(
+                      <tr key={`${j.id}-details`} className="log-details-row">
+                        <td colSpan={8} id={`job-details-${j.id}`}>
+                          <div className="log-details-panel">
+                            <div className="log-details-summary">
+                              <div>
+                                <div className="log-details-label">{jobsStrings.table.id}</div>
+                                <div className="log-details-value">{j.id}</div>
+                              </div>
+                              <div>
+                                <div className="log-details-label">{jobsStrings.table.type}</div>
+                                <div className="log-details-value">{jt || '—'}</div>
+                              </div>
+                              <div>
+                                <div className="log-details-label">{jobsStrings.table.key}</div>
+                                <div className="log-details-value">{keyId ?? '—'}</div>
+                              </div>
+                              <div>
+                                <div className="log-details-label">{jobsStrings.table.status}</div>
+                                <div className="log-details-value">{j.status}</div>
+                              </div>
+                              <div>
+                                <div className="log-details-label">{jobsStrings.table.attempt}</div>
+                                <div className="log-details-value">{j.attempt}</div>
+                              </div>
+                              <div>
+                                <div className="log-details-label">{jobsStrings.table.started}</div>
+                                <div className="log-details-value">
+                                  {startedSummary ?? jobsStrings.empty.none}
+                                </div>
+                              </div>
+                              <div>
+                                <div className="log-details-label">{jobsStrings.table.finished}</div>
+                                <div className="log-details-value">
+                                  {finishedSummary ?? jobsStrings.empty.none}
+                                </div>
+                              </div>
+                              {duration && (
+                                <div>
+                                  <div className="log-details-label">DURATION</div>
+                                  <div className="log-details-value">{duration}</div>
+                                </div>
+                              )}
+                            </div>
+                            {jobMessage && (
+                              <div className="log-details-body">
+                                <section className="log-details-section">
+                                  <header>{jobsStrings.table.message}</header>
+                                  <pre>{jobMessage}</pre>
+                                </section>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>,
+                    )
+                  }
+
+                  return rows
                 })}
               </tbody>
             </table>

@@ -247,6 +247,10 @@ interface AdminTranslationsShape {
       finished: string
       message: string
     }
+    toggles: {
+      show: string
+      hide: string
+    }
   }
   logs: {
     title: string
@@ -677,6 +681,10 @@ export const translations: Record<Language, TranslationShape> = {
           finished: 'Finished',
           message: 'Message',
         },
+        toggles: {
+          show: 'Show job details',
+          hide: 'Hide job details',
+        },
       },
       statuses: {
         active: 'Active',
@@ -1042,6 +1050,10 @@ export const translations: Record<Language, TranslationShape> = {
           started: '开始时间',
           finished: '结束时间',
           message: '消息',
+        },
+        toggles: {
+          show: '展开任务详情',
+          hide: '收起任务详情',
         },
       },
       statuses: {
