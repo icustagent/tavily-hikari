@@ -4712,4 +4712,130 @@ mod tests {
 
         let _ = std::fs::remove_file(db_path);
     }
+
+    #[tokio::test]
+    async fn delete_access_token_soft_deletes_and_hides_from_list() {
+        let db_path = temp_db_path("token-delete");
+        let db_str = db_path.to_string_lossy().to_string();
+        let proxy = TavilyProxy::with_endpoint(Vec::<String>::new(), DEFAULT_UPSTREAM, &db_str)
+            .await
+            .expect("proxy created");
+
+        let token = proxy
+            .create_access_token(Some("soft-delete-test"))
+            .await
+            .expect("create token");
+
+        // Sanity check: token is visible before delete.
+        let tokens_before = proxy
+            .list_access_tokens()
+            .await
+            .expect("list tokens before delete");
+        assert!(
+            tokens_before.iter().any(|t| t.id == token.id),
+            "token should appear in list before delete"
+        );
+
+        // Inspect raw row to confirm it's enabled and not deleted.
+        let store = proxy.key_store.clone();
+        let (enabled_before, deleted_at_before): (i64, Option<i64>) =
+            sqlx::query_as("SELECT enabled, deleted_at FROM auth_tokens WHERE id = ?")
+                .bind(&token.id)
+                .fetch_one(&store.pool)
+                .await
+                .expect("token row exists before delete");
+        assert_eq!(enabled_before, 1);
+        assert!(
+            deleted_at_before.is_none(),
+            "deleted_at should be NULL before delete"
+        );
+
+        // Perform delete via public API (soft delete).
+        proxy
+            .delete_access_token(&token.id)
+            .await
+            .expect("delete token");
+
+        // Row still exists but marked disabled and soft-deleted.
+        let (enabled_after, deleted_at_after): (i64, Option<i64>) =
+            sqlx::query_as("SELECT enabled, deleted_at FROM auth_tokens WHERE id = ?")
+                .bind(&token.id)
+                .fetch_one(&store.pool)
+                .await
+                .expect("token row exists after delete");
+        assert_eq!(enabled_after, 0, "token should be disabled after delete");
+        assert!(
+            deleted_at_after.is_some(),
+            "deleted_at should be set after delete"
+        );
+
+        // Token is no longer returned from management listing.
+        let tokens_after = proxy
+            .list_access_tokens()
+            .await
+            .expect("list tokens after delete");
+        assert!(
+            tokens_after.iter().all(|t| t.id != token.id),
+            "soft-deleted token should not appear in list"
+        );
+
+        let _ = std::fs::remove_file(db_path);
+    }
+
+    #[tokio::test]
+    async fn heal_orphan_auth_tokens_from_logs_creates_soft_deleted_token() {
+        let db_path = temp_db_path("heal-orphan");
+        let db_str = db_path.to_string_lossy().to_string();
+
+        // Initialize schema.
+        let store = KeyStore::new(&db_str).await.expect("keystore created");
+
+        // Insert an auth_token_logs entry for a token id that does not exist in auth_tokens.
+        let orphan_token_id = "ZZZZ";
+        sqlx::query(
+            r#"
+            INSERT INTO auth_token_logs (
+                token_id, method, path, query, http_status, mcp_status, result_status, error_message, created_at
+            ) VALUES (?, 'GET', '/mcp', NULL, 200, NULL, 'success', NULL, 1234567890)
+            "#,
+        )
+        .bind(orphan_token_id)
+        .execute(&store.pool)
+        .await
+        .expect("insert orphan log");
+
+        // Clear healer meta key so that we can invoke the healer path again for this test.
+        sqlx::query("DELETE FROM meta WHERE key = ?")
+            .bind(META_KEY_HEAL_ORPHAN_TOKENS_V1)
+            .execute(&store.pool)
+            .await
+            .expect("delete meta gate");
+
+        // Run healer directly.
+        store
+            .heal_orphan_auth_tokens_from_logs()
+            .await
+            .expect("heal orphan tokens");
+
+        // Verify that a soft-deleted auth_tokens row was created for the orphan id.
+        let (enabled, total_requests, deleted_at): (i64, i64, Option<i64>) = sqlx::query_as(
+            "SELECT enabled, total_requests, deleted_at FROM auth_tokens WHERE id = ?",
+        )
+        .bind(orphan_token_id)
+        .fetch_one(&store.pool)
+        .await
+        .expect("restored token row");
+
+        assert_eq!(enabled, 0, "restored token should be disabled");
+        assert_eq!(
+            total_requests, 1,
+            "restored token should count orphan log entries"
+        );
+        assert!(
+            deleted_at.is_some(),
+            "restored token should be marked soft-deleted"
+        );
+
+        let _ = std::fs::remove_file(db_path);
+    }
 }
