@@ -251,6 +251,7 @@ function AdminDashboard(): JSX.Element {
   const [tokenGroupsExpanded, setTokenGroupsExpanded] = useState(false)
   const [tokenGroupsCollapsedOverflowing, setTokenGroupsCollapsedOverflowing] = useState(false)
   const [logs, setLogs] = useState<RequestLog[]>([])
+  const [logsTotal, setLogsTotal] = useState(0)
   const [logsPage, setLogsPage] = useState(1)
   const [logResultFilter, setLogResultFilter] = useState<'all' | 'success' | 'error' | 'quota_exhausted'>('all')
   const [jobs, setJobs] = useState<import('./api').JobLogView[]>([])
@@ -364,10 +365,9 @@ function AdminDashboard(): JSX.Element {
   const loadData = useCallback(
     async (signal?: AbortSignal) => {
       try {
-        const [summaryData, keyData, logData, ver, profileData, tokenData, tokenGroupsData] = await Promise.all([
+        const [summaryData, keyData, ver, profileData, tokenData, tokenGroupsData] = await Promise.all([
           fetchSummary(signal),
           fetchApiKeys(signal),
-          fetchRequestLogs(LOGS_PER_PAGE * LOGS_MAX_PAGES, signal),
           fetchVersion(signal).catch(() => null),
           fetchProfile(signal).catch(() => null),
           fetchTokens(
@@ -394,23 +394,9 @@ function AdminDashboard(): JSX.Element {
         setProfile(profileData ?? null)
         setSummary(summaryData)
         setKeys(keyData)
-        setLogs(logData)
         setTokens(tokenData.items)
         setTokensTotal(tokenData.total)
         setTokenGroups(tokenGroupsData)
-        setExpandedLogs((previous) => {
-          if (previous.size === 0) {
-            return new Set()
-          }
-          const validIds = new Set(logData.map((item) => item.id))
-          const next = new Set<number>()
-          for (const id of previous) {
-            if (validIds.has(id)) {
-              next.add(id)
-            }
-          }
-          return next
-        })
         setVersion(ver ?? null)
         setLastUpdated(new Date())
         setError(null)
@@ -434,6 +420,37 @@ function AdminDashboard(): JSX.Element {
     void loadData(controller.signal)
     return () => controller.abort()
   }, [loadData])
+
+  // Logs list: backend pagination & result filter
+  useEffect(() => {
+    const controller = new AbortController()
+    const resultParam =
+      logResultFilter === 'all' ? undefined : (logResultFilter as 'success' | 'error' | 'quota_exhausted')
+
+    fetchRequestLogs(logsPage, LOGS_PER_PAGE, resultParam, controller.signal)
+      .then((result) => {
+        if (controller.signal.aborted) return
+        setLogs(result.items)
+        setLogsTotal(result.total)
+        setExpandedLogs((previous) => {
+          if (previous.size === 0) return new Set()
+          const visibleIds = new Set(result.items.map((item) => item.id))
+          const next = new Set<number>()
+          for (const id of previous) {
+            if (visibleIds.has(id)) next.add(id)
+          }
+          return next
+        })
+      })
+      .catch((err) => {
+        if (controller.signal.aborted) return
+        console.error(err)
+        setLogs([])
+        setLogsTotal(0)
+      })
+
+    return () => controller.abort()
+  }, [logsPage, logResultFilter])
 
   // Jobs list: refetch when filter or page changes
   useEffect(() => {
@@ -528,14 +545,6 @@ function AdminDashboard(): JSX.Element {
           const data = JSON.parse(ev.data) as { summary: Summary; keys: ApiKeyStats[]; logs: RequestLog[] }
           setSummary(data.summary)
           setKeys(data.keys)
-          setLogs(data.logs)
-          setExpandedLogs((previous) => {
-            // keep expansion only for visible ids
-            const valid = new Set(data.logs.map((l) => l.id))
-            const next = new Set<number>()
-            for (const id of previous) if (valid.has(id)) next.add(id)
-            return next
-          })
           setLastUpdated(new Date())
           setError(null)
           setLoading(false)
@@ -664,36 +673,14 @@ function AdminDashboard(): JSX.Element {
     })
   }, [dedupedKeys])
 
-  const filteredLogs = useMemo(() => {
-    if (logResultFilter === 'all') return logs
-    return logs.filter((log) => {
-      const status = log.result_status.toLowerCase()
-      if (logResultFilter === 'success') return status === 'success'
-      if (logResultFilter === 'error') return status === 'error'
-      if (logResultFilter === 'quota_exhausted') return status === 'quota_exhausted'
-      return true
-    })
-  }, [logs, logResultFilter])
-
-  const maxLogs = LOGS_PER_PAGE * LOGS_MAX_PAGES
-
-  const effectiveLogs = useMemo(() => {
-    if (filteredLogs.length <= maxLogs) return filteredLogs
-    return filteredLogs.slice(0, maxLogs)
-  }, [filteredLogs, maxLogs])
-
-  const logsTotalPages = useMemo(
-    () => Math.max(1, Math.ceil(effectiveLogs.length / LOGS_PER_PAGE)),
-    [effectiveLogs],
+  const logsTotalPagesRaw = useMemo(
+    () => Math.max(1, Math.ceil(logsTotal / LOGS_PER_PAGE)),
+    [logsTotal],
   )
 
-  const safeLogsPage = Math.min(logsPage, logsTotalPages)
+  const logsTotalPages = Math.min(logsTotalPagesRaw, LOGS_MAX_PAGES)
 
-  const paginatedLogs = useMemo(() => {
-    if (effectiveLogs.length === 0) return []
-    const start = (safeLogsPage - 1) * LOGS_PER_PAGE
-    return effectiveLogs.slice(start, start + LOGS_PER_PAGE)
-  }, [effectiveLogs, safeLogsPage])
+  const safeLogsPage = Math.min(logsPage, logsTotalPages)
 
   const displayName = profile?.displayName ?? null
 
@@ -768,7 +755,7 @@ function AdminDashboard(): JSX.Element {
     setTokensPage((p) => Math.min(totalPages, p + 1))
   }
 
-  const hasLogsPagination = effectiveLogs.length > LOGS_PER_PAGE
+  const hasLogsPagination = logsTotal > LOGS_PER_PAGE
 
   const goPrevLogsPage = () => {
     setLogsPage((p) => Math.max(1, p - 1))
@@ -1521,7 +1508,7 @@ function AdminDashboard(): JSX.Element {
           </div>
         </div>
         <div className="table-wrapper jobs-table-wrapper">
-          {effectiveLogs.length === 0 ? (
+          {logs.length === 0 ? (
             <div className="empty-state">{loading ? logStrings.empty.loading : logStrings.empty.none}</div>
           ) : (
             <table className="admin-logs-table">
@@ -1537,7 +1524,7 @@ function AdminDashboard(): JSX.Element {
                 </tr>
               </thead>
               <tbody>
-                {paginatedLogs.map((log) => (
+                {logs.map((log) => (
                   <LogRow
                     key={log.id}
                     log={log}
@@ -2085,8 +2072,8 @@ function LogRow({ log, expanded, onToggle, strings }: LogRowProps): JSX.Element 
 function LogDetails({ log, strings }: { log: RequestLog; strings: AdminTranslations }): JSX.Element {
   const query = log.query ? `?${log.query}` : ''
   const requestLine = `${log.method} ${log.path}${query}`
-  const forwarded = log.forwarded_headers.filter((value) => value.trim().length > 0)
-  const dropped = log.dropped_headers.filter((value) => value.trim().length > 0)
+  const forwarded = (log.forwarded_headers ?? []).filter((value) => value.trim().length > 0)
+  const dropped = (log.dropped_headers ?? []).filter((value) => value.trim().length > 0)
   const httpLabel = `${strings.logs.table.httpStatus}: ${log.http_status ?? strings.logs.errors.none}`
   const mcpLabel = `${strings.logs.table.mcpStatus}: ${log.mcp_status ?? strings.logs.errors.none}`
   const requestBody = log.request_body ?? strings.logDetails.noBody
