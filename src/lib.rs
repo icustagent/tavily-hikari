@@ -105,6 +105,109 @@ struct TokenAffinity {
     expires_at: i64,
 }
 
+#[derive(Debug)]
+struct TokenAffinityState {
+    ttl_secs: i64,
+    mappings: HashMap<String, TokenAffinity>,
+}
+
+impl TokenAffinityState {
+    fn new(ttl_secs: i64) -> Self {
+        Self {
+            ttl_secs,
+            mappings: HashMap::new(),
+        }
+    }
+
+    /// 返回给定 token 当前的亲和 key（若存在且未过期），并在过期时清理映射。
+    fn get_candidate(&mut self, token_id: &str, now_ts: i64) -> Option<String> {
+        if let Some(entry) = self.mappings.get(token_id) {
+            if entry.expires_at > now_ts {
+                return Some(entry.key_id.clone());
+            }
+            // 亲和已过期，删除旧映射
+            self.mappings.remove(token_id);
+        }
+        None
+    }
+
+    /// 记录或更新 token 的亲和 key，并从 now_ts 起应用 TTL。
+    fn record_mapping(&mut self, token_id: &str, key_id: &str, now_ts: i64) {
+        let expires_at = now_ts + self.ttl_secs;
+        self.mappings.insert(
+            token_id.to_owned(),
+            TokenAffinity {
+                key_id: key_id.to_owned(),
+                expires_at,
+            },
+        );
+    }
+
+    /// 显式删除 token 的亲和关系。
+    fn drop_mapping(&mut self, token_id: &str) {
+        self.mappings.remove(token_id);
+    }
+}
+
+#[cfg(test)]
+mod affinity_tests {
+    use super::*;
+
+    #[test]
+    fn no_mapping_returns_none() {
+        let mut state = TokenAffinityState::new(60);
+        let now = 1_000;
+        assert!(state.get_candidate("token-a", now).is_none());
+    }
+
+    #[test]
+    fn mapping_is_returned_before_ttl() {
+        let mut state = TokenAffinityState::new(60);
+        let now = 1_000;
+        state.record_mapping("token-a", "key-1", now);
+
+        let cand = state.get_candidate("token-a", now + 30);
+        assert_eq!(cand.as_deref(), Some("key-1"));
+    }
+
+    #[test]
+    fn mapping_expires_after_ttl_and_is_cleaned() {
+        let mut state = TokenAffinityState::new(60);
+        let now = 1_000;
+        state.record_mapping("token-a", "key-1", now);
+
+        // 超过 TTL 之后应返回 None
+        let cand = state.get_candidate("token-a", now + 61);
+        assert!(cand.is_none());
+
+        // 再次查询应仍为 None（确认映射已被删除）
+        let cand2 = state.get_candidate("token-a", now + 62);
+        assert!(cand2.is_none());
+    }
+
+    #[test]
+    fn record_mapping_overwrites_existing_entry() {
+        let mut state = TokenAffinityState::new(60);
+        let now = 1_000;
+        state.record_mapping("token-a", "key-1", now);
+        state.record_mapping("token-a", "key-2", now + 10);
+
+        let cand = state.get_candidate("token-a", now + 20);
+        assert_eq!(cand.as_deref(), Some("key-2"));
+    }
+
+    #[test]
+    fn drop_mapping_removes_affinity() {
+        let mut state = TokenAffinityState::new(60);
+        let now = 1_000;
+        state.record_mapping("token-a", "key-1", now);
+        state.drop_mapping("token-a");
+
+        let cand = state.get_candidate("token-a", now + 10);
+        assert!(cand.is_none());
+    }
+}
+
 #[derive(Clone, Debug)]
 struct TokenQuota {
     store: Arc<KeyStore>,
@@ -127,8 +230,7 @@ pub struct TavilyProxy {
     key_store: Arc<KeyStore>,
     upstream_origin: String,
     token_quota: TokenQuota,
-    affinity: Arc<Mutex<HashMap<String, TokenAffinity>>>,
-    affinity_ttl_secs: i64,
+    affinity: Arc<Mutex<TokenAffinityState>>,
 }
 
 impl TavilyProxy {
@@ -173,8 +275,7 @@ impl TavilyProxy {
             key_store,
             upstream_origin,
             token_quota,
-            affinity: Arc::new(Mutex::new(HashMap::new())),
-            affinity_ttl_secs: TOKEN_AFFINITY_TTL_SECS,
+            affinity: Arc::new(Mutex::new(TokenAffinityState::new(TOKEN_AFFINITY_TTL_SECS))),
         })
     }
 
@@ -184,69 +285,33 @@ impl TavilyProxy {
     ) -> Result<ApiKeyLease, ProxyError> {
         let now = Utc::now().timestamp();
 
-        if let Some(token_id) = auth_token_id {
-            // Fast path: try to reuse an existing, non-expired affinity key.
-            if let Some(lease) = self.try_acquire_affinity_key(token_id, now).await? {
+        let Some(token_id) = auth_token_id else {
+            // No token id (e.g. certain internal or dev flows) → plain global scheduling.
+            return self.key_store.acquire_key().await;
+        };
+
+        // Step 1: 尝试使用当前有效的亲和 key（仅在 TTL 窗口内且未过期）。
+        let candidate_key_id = {
+            let mut state = self.affinity.lock().await;
+            state.get_candidate(token_id, now)
+        };
+
+        if let Some(key_id) = candidate_key_id {
+            if let Some(lease) = self.key_store.try_acquire_specific_key(&key_id).await? {
                 return Ok(lease);
             }
-
-            // No valid affinity key; fall back to global LRU scheduler.
-            let lease = self.key_store.acquire_key().await?;
-
-            {
-                // Record new affinity mapping with soft TTL.
-                let mut map = self.affinity.lock().await;
-                map.insert(
-                    token_id.to_owned(),
-                    TokenAffinity {
-                        key_id: lease.id.clone(),
-                        expires_at: now + self.affinity_ttl_secs,
-                    },
-                );
-            }
-
-            Ok(lease)
-        } else {
-            // No token id (e.g. certain internal or dev flows) → plain global scheduling.
-            self.key_store.acquire_key().await
+            // 底层认为该 key 不再可用（禁用、删除等），清除亲和映射。
+            let mut state = self.affinity.lock().await;
+            state.drop_mapping(token_id);
         }
-    }
 
-    async fn try_acquire_affinity_key(
-        &self,
-        token_id: &str,
-        now: i64,
-    ) -> Result<Option<ApiKeyLease>, ProxyError> {
-        // Read affinity mapping without holding the lock over async work.
-        let key_id_opt = {
-            let mut map = self.affinity.lock().await;
-            if let Some(entry) = map.get(token_id) {
-                if entry.expires_at > now {
-                    Some(entry.key_id.clone())
-                } else {
-                    // Expired mapping – clean up eagerly.
-                    map.remove(token_id);
-                    None
-                }
-            } else {
-                None
-            }
-        };
-
-        let Some(key_id) = key_id_opt else {
-            return Ok(None);
-        };
-
-        // Only respect affinity when the mapped key is still active and not deleted.
-        match self.key_store.try_acquire_specific_key(&key_id).await? {
-            Some(lease) => Ok(Some(lease)),
-            None => {
-                // Underlying key is no longer usable; drop the mapping.
-                let mut map = self.affinity.lock().await;
-                map.remove(token_id);
-                Ok(None)
-            }
+        // Step 2: 没有可用亲和 key → 使用全局 LRU 选取一把新 key，并建立新的亲和关系。
+        let lease = self.key_store.acquire_key().await?;
+        {
+            let mut state = self.affinity.lock().await;
+            state.record_mapping(token_id, &lease.id, now);
         }
+        Ok(lease)
     }
 
     /// 将请求透传到 Tavily upstream 并记录日志。
