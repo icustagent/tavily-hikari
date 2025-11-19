@@ -2034,7 +2034,7 @@ async fn shutdown_signal() {
 }
 
 const BODY_LIMIT: usize = 16 * 1024 * 1024; // 16 MiB 默认限制
-const DEFAULT_LOG_LIMIT: usize = 50;
+const DEFAULT_LOG_LIMIT: usize = 200;
 
 #[derive(Debug, Serialize)]
 struct ApiKeyView {

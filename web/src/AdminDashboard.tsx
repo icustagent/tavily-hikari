@@ -49,6 +49,8 @@ function parseHashForTokenId(): string | null {
 }
 
 const REFRESH_INTERVAL_MS = 30_000
+const LOGS_PER_PAGE = 20
+const LOGS_MAX_PAGES = 10
 
 const numberFormatter = new Intl.NumberFormat('en-US', {
   maximumFractionDigits: 0,
@@ -249,6 +251,8 @@ function AdminDashboard(): JSX.Element {
   const [tokenGroupsExpanded, setTokenGroupsExpanded] = useState(false)
   const [tokenGroupsCollapsedOverflowing, setTokenGroupsCollapsedOverflowing] = useState(false)
   const [logs, setLogs] = useState<RequestLog[]>([])
+  const [logsPage, setLogsPage] = useState(1)
+  const [logResultFilter, setLogResultFilter] = useState<'all' | 'success' | 'error' | 'quota_exhausted'>('all')
   const [jobs, setJobs] = useState<import('./api').JobLogView[]>([])
   const [jobFilter, setJobFilter] = useState<'all' | 'quota' | 'usage' | 'logs'>('all')
   const [jobsPage, setJobsPage] = useState(1)
@@ -363,7 +367,7 @@ function AdminDashboard(): JSX.Element {
         const [summaryData, keyData, logData, ver, profileData, tokenData, tokenGroupsData] = await Promise.all([
           fetchSummary(signal),
           fetchApiKeys(signal),
-          fetchRequestLogs(50, signal),
+          fetchRequestLogs(LOGS_PER_PAGE * LOGS_MAX_PAGES, signal),
           fetchVersion(signal).catch(() => null),
           fetchProfile(signal).catch(() => null),
           fetchTokens(
@@ -660,6 +664,37 @@ function AdminDashboard(): JSX.Element {
     })
   }, [dedupedKeys])
 
+  const filteredLogs = useMemo(() => {
+    if (logResultFilter === 'all') return logs
+    return logs.filter((log) => {
+      const status = log.result_status.toLowerCase()
+      if (logResultFilter === 'success') return status === 'success'
+      if (logResultFilter === 'error') return status === 'error'
+      if (logResultFilter === 'quota_exhausted') return status === 'quota_exhausted'
+      return true
+    })
+  }, [logs, logResultFilter])
+
+  const maxLogs = LOGS_PER_PAGE * LOGS_MAX_PAGES
+
+  const effectiveLogs = useMemo(() => {
+    if (filteredLogs.length <= maxLogs) return filteredLogs
+    return filteredLogs.slice(0, maxLogs)
+  }, [filteredLogs, maxLogs])
+
+  const logsTotalPages = useMemo(
+    () => Math.max(1, Math.ceil(effectiveLogs.length / LOGS_PER_PAGE)),
+    [effectiveLogs],
+  )
+
+  const safeLogsPage = Math.min(logsPage, logsTotalPages)
+
+  const paginatedLogs = useMemo(() => {
+    if (effectiveLogs.length === 0) return []
+    const start = (safeLogsPage - 1) * LOGS_PER_PAGE
+    return effectiveLogs.slice(start, start + LOGS_PER_PAGE)
+  }, [effectiveLogs, safeLogsPage])
+
   const displayName = profile?.displayName ?? null
 
   const toggleLogExpansion = useCallback((id: number) => {
@@ -731,6 +766,16 @@ function AdminDashboard(): JSX.Element {
   }
   const goNextPage = () => {
     setTokensPage((p) => Math.min(totalPages, p + 1))
+  }
+
+  const hasLogsPagination = effectiveLogs.length > LOGS_PER_PAGE
+
+  const goPrevLogsPage = () => {
+    setLogsPage((p) => Math.max(1, p - 1))
+  }
+
+  const goNextLogsPage = () => {
+    setLogsPage((p) => Math.min(logsTotalPages, p + 1))
   }
 
   const handleSelectTokenGroupAll = () => {
@@ -1430,9 +1475,53 @@ function AdminDashboard(): JSX.Element {
             <h2>{logStrings.title}</h2>
             <p className="panel-description">{logStrings.description}</p>
           </div>
+          <div className="panel-actions">
+            <div className="segmented-control">
+              <button
+                type="button"
+                className={logResultFilter === 'all' ? 'active' : ''}
+                onClick={() => {
+                  setLogResultFilter('all')
+                  setLogsPage(1)
+                }}
+              >
+                {logStrings.filters.all}
+              </button>
+              <button
+                type="button"
+                className={logResultFilter === 'success' ? 'active' : ''}
+                onClick={() => {
+                  setLogResultFilter('success')
+                  setLogsPage(1)
+                }}
+              >
+                {logStrings.filters.success}
+              </button>
+              <button
+                type="button"
+                className={logResultFilter === 'error' ? 'active' : ''}
+                onClick={() => {
+                  setLogResultFilter('error')
+                  setLogsPage(1)
+                }}
+              >
+                {logStrings.filters.error}
+              </button>
+              <button
+                type="button"
+                className={logResultFilter === 'quota_exhausted' ? 'active' : ''}
+                onClick={() => {
+                  setLogResultFilter('quota_exhausted')
+                  setLogsPage(1)
+                }}
+              >
+                {logStrings.filters.quota}
+              </button>
+            </div>
+          </div>
         </div>
         <div className="table-wrapper jobs-table-wrapper">
-          {logs.length === 0 ? (
+          {effectiveLogs.length === 0 ? (
             <div className="empty-state">{loading ? logStrings.empty.loading : logStrings.empty.none}</div>
           ) : (
             <table className="admin-logs-table">
@@ -1448,7 +1537,7 @@ function AdminDashboard(): JSX.Element {
                 </tr>
               </thead>
               <tbody>
-                {logs.map((log) => (
+                {paginatedLogs.map((log) => (
                   <LogRow
                     key={log.id}
                     log={log}
@@ -1461,6 +1550,25 @@ function AdminDashboard(): JSX.Element {
             </table>
           )}
         </div>
+        {hasLogsPagination && (
+          <div className="table-pagination">
+            <span className="panel-description">
+              {logStrings.description} ({safeLogsPage} / {logsTotalPages})
+            </span>
+            <div style={{ display: 'inline-flex', gap: 8 }}>
+              <button className="button" onClick={goPrevLogsPage} disabled={safeLogsPage <= 1}>
+                {tokenStrings.pagination.prev}
+              </button>
+              <button
+                className="button"
+                onClick={goNextLogsPage}
+                disabled={safeLogsPage >= logsTotalPages}
+              >
+                {tokenStrings.pagination.next}
+              </button>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="surface panel">

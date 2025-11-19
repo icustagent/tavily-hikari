@@ -187,7 +187,7 @@ export function fetchApiKeyDetail(id: string, signal?: AbortSignal): Promise<Api
   return requestJson(`/api/keys/${encoded}`, { signal })
 }
 
-export function fetchRequestLogs(limit = 50, signal?: AbortSignal): Promise<RequestLog[]> {
+export function fetchRequestLogs(limit = 200, signal?: AbortSignal): Promise<RequestLog[]> {
   const params = new URLSearchParams({ limit: limit.toString() })
   return requestJson(`/api/logs?${params.toString()}`, { signal })
 }
