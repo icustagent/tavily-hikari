@@ -1438,7 +1438,19 @@ function AdminDashboard(): JSX.Element {
       <section className="surface panel">
         <div className="panel-header">
           <div>
-            <h2>{tokenStrings.title}</h2>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <h2 style={{ margin: 0 }}>{tokenStrings.title}</h2>
+              <div className="tooltip" data-tip={tokenStrings.actions.viewLeaderboard}>
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label={tokenStrings.actions.viewLeaderboard}
+                  onClick={navigateTokenLeaderboard}
+                >
+                  <Icon icon="mdi:chart-timeline-variant" width={20} height={20} />
+                </button>
+              </div>
+            </div>
             <p className="panel-description">{tokenStrings.description}</p>
           </div>
           {isAdmin && (
