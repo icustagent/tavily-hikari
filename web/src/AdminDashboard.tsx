@@ -149,6 +149,35 @@ function sortLeaderboard(
   )
 }
 
+type MetricKey = 'usage' | 'errors' | 'other'
+
+function pickPrimaryForPeriod(
+  item: TokenUsageLeaderboardItem,
+  period: 'day' | 'month' | 'all',
+  focus: MetricKey,
+): { primaryKey: MetricKey; values: Record<MetricKey, number> } {
+  const values: Record<MetricKey, number> =
+    period === 'day'
+      ? {
+          usage: item.today_total ?? 0,
+          errors: item.today_errors ?? 0,
+          other: item.today_other ?? 0,
+        }
+      : period === 'month'
+        ? {
+            usage: item.month_total ?? 0,
+            errors: item.month_errors ?? 0,
+            other: item.month_other ?? 0,
+          }
+        : {
+            usage: item.all_total ?? 0,
+            errors: item.all_errors ?? 0,
+            other: item.all_other ?? 0,
+          }
+
+  return { primaryKey: focus, values }
+}
+
 const numberFormatter = new Intl.NumberFormat('en-US', {
   maximumFractionDigits: 0,
 })
@@ -1193,6 +1222,36 @@ function AdminDashboard(): JSX.Element {
   }, [tokenLeaderboard, tokenLeaderboardPeriod, tokenLeaderboardFocus])
 
   if (route.name === 'token-usage') {
+    const primaryMetric: MetricKey = tokenLeaderboardFocus
+
+    const renderPeriodCell = (
+      item: TokenUsageLeaderboardItem,
+      period: 'day' | 'month' | 'all',
+      primary: MetricKey,
+    ) => {
+      const { values } = pickPrimaryForPeriod(item, period, primary)
+      const secondaryKeys: MetricKey[] = ['usage', 'errors', 'other'].filter((k) => k !== primary) as MetricKey[]
+      const label = (key: MetricKey) =>
+        key === 'usage'
+          ? tokenLeaderboardStrings.focus.usage
+          : key === 'errors'
+            ? tokenLeaderboardStrings.table.errors
+            : tokenLeaderboardStrings.table.other
+
+      return (
+        <td>
+          <div className="token-leaderboard-usage">{formatNumber(values[primary])}</div>
+          <div className="token-leaderboard-sub">
+            {secondaryKeys.map((key) => (
+              <span key={key}>
+                {label(key)}: {formatNumber(values[key])}
+              </span>
+            ))}
+          </div>
+        </td>
+      )
+    }
+
     return (
       <main className="app-shell">
         <section className="surface app-header">
@@ -1264,16 +1323,14 @@ function AdminDashboard(): JSX.Element {
         </section>
         <section className="surface panel token-leaderboard-panel">
           <div className="table-wrapper jobs-table-wrapper token-leaderboard-wrapper">
-                {tokenLeaderboardView.length === 0 ? (
-                  <div className="empty-state">
-                    {tokenLeaderboardLoading
-                      ? tokenLeaderboardStrings.empty.loading
-                      : tokenLeaderboardStrings.empty.none}
-                  </div>
-                ) : (
-                  <table className="jobs-table token-leaderboard-table">
-                    <thead>
-                      <tr>
+            {tokenLeaderboardView.length === 0 ? (
+              <div className="empty-state">
+                {tokenLeaderboardLoading ? tokenLeaderboardStrings.empty.loading : tokenLeaderboardStrings.empty.none}
+              </div>
+            ) : (
+              <table className="jobs-table token-leaderboard-table">
+                <thead>
+                  <tr>
                     <th>{tokenLeaderboardStrings.table.token}</th>
                     <th>{tokenLeaderboardStrings.table.group}</th>
                     <th>{tokenLeaderboardStrings.table.hourly}</th>
@@ -1289,11 +1346,7 @@ function AdminDashboard(): JSX.Element {
                     <tr key={item.id}>
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <button
-                            type="button"
-                            className="link-button"
-                            onClick={() => navigateToken(item.id)}
-                          >
+                          <button type="button" className="link-button" onClick={() => navigateToken(item.id)}>
                             <code>{item.id}</code>
                           </button>
                           {!item.enabled && (
@@ -1310,37 +1363,15 @@ function AdminDashboard(): JSX.Element {
                       <td>{item.group && item.group.trim().length > 0 ? item.group : '—'}</td>
                       <td>
                         <div className="token-leaderboard-usage">{formatNumber(item.quota_hourly_used)}</div>
-                        <div className="token-leaderboard-sub">
-                          / {formatNumber(item.quota_hourly_limit)}
-                        </div>
+                        <div className="token-leaderboard-sub">/ {formatNumber(item.quota_hourly_limit)}</div>
                       </td>
                       <td>
                         <div className="token-leaderboard-usage">{formatNumber(item.quota_daily_used)}</div>
-                        <div className="token-leaderboard-sub">
-                          / {formatNumber(item.quota_daily_limit)}
-                        </div>
+                        <div className="token-leaderboard-sub">/ {formatNumber(item.quota_daily_limit)}</div>
                       </td>
-                      <td>
-                        <div className="token-leaderboard-usage">{formatNumber(item.today_total)}</div>
-                        <div className="token-leaderboard-sub">
-                          <span>{tokenLeaderboardStrings.table.errors}: {formatNumber(item.today_errors)}</span>
-                          <span>{tokenLeaderboardStrings.table.other}: {formatNumber(item.today_other)}</span>
-                        </div>
-                      </td>
-                      <td>
-                        <div className="token-leaderboard-usage">{formatNumber(item.month_total)}</div>
-                        <div className="token-leaderboard-sub">
-                          <span>{tokenLeaderboardStrings.table.errors}: {formatNumber(item.month_errors)}</span>
-                          <span>{tokenLeaderboardStrings.table.other}: {formatNumber(item.month_other)}</span>
-                        </div>
-                      </td>
-                      <td>
-                        <div className="token-leaderboard-usage">{formatNumber(item.all_total)}</div>
-                        <div className="token-leaderboard-sub">
-                          <span>{tokenLeaderboardStrings.table.errors}: {formatNumber(item.all_errors)}</span>
-                          <span>{tokenLeaderboardStrings.table.other}: {formatNumber(item.all_other)}</span>
-                        </div>
-                      </td>
+                      {renderPeriodCell(item, 'day', primaryMetric)}
+                      {renderPeriodCell(item, 'month', primaryMetric)}
+                      {renderPeriodCell(item, 'all', primaryMetric)}
                       <td>
                         <div className="token-last-used">
                           <span className="token-last-date">{formatDateOnly(item.last_used_at)}</span>
@@ -1353,11 +1384,11 @@ function AdminDashboard(): JSX.Element {
               </table>
             )}
           </div>
-        {tokenLeaderboardError && tokenLeaderboardView.length === 0 && (
-          <div className="surface error-banner" style={{ marginTop: 12 }}>
-            {tokenLeaderboardError}
-          </div>
-        )}
+          {tokenLeaderboardError && tokenLeaderboardView.length === 0 && (
+            <div className="surface error-banner" style={{ marginTop: 12 }}>
+              {tokenLeaderboardError}
+            </div>
+          )}
         </section>
       </main>
     )
