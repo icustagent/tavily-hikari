@@ -1187,6 +1187,11 @@ function AdminDashboard(): JSX.Element {
   if (route.name === 'token') {
     return <TokenDetail id={route.id} onBack={navigateHome} />
   }
+  const tokenLeaderboardView = useMemo(() => {
+    if (!tokenLeaderboard || tokenLeaderboard.length === 0) return []
+    return sortLeaderboard(tokenLeaderboard, tokenLeaderboardPeriod, tokenLeaderboardFocus).slice(0, 50)
+  }, [tokenLeaderboard, tokenLeaderboardPeriod, tokenLeaderboardFocus])
+
   if (route.name === 'token-usage') {
     return (
       <main className="app-shell">
@@ -1259,7 +1264,7 @@ function AdminDashboard(): JSX.Element {
         </section>
         <section className="surface panel token-leaderboard-panel">
           <div className="table-wrapper jobs-table-wrapper token-leaderboard-wrapper">
-                {tokenLeaderboard.length === 0 ? (
+                {tokenLeaderboardView.length === 0 ? (
                   <div className="empty-state">
                     {tokenLeaderboardLoading
                       ? tokenLeaderboardStrings.empty.loading
@@ -1280,7 +1285,7 @@ function AdminDashboard(): JSX.Element {
                   </tr>
                 </thead>
                 <tbody>
-                  {tokenLeaderboard.map((item) => (
+                  {tokenLeaderboardView.map((item) => (
                     <tr key={item.id}>
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1348,7 +1353,7 @@ function AdminDashboard(): JSX.Element {
               </table>
             )}
           </div>
-        {tokenLeaderboardError && tokenLeaderboard.length === 0 && (
+        {tokenLeaderboardError && tokenLeaderboardView.length === 0 && (
           <div className="surface error-banner" style={{ marginTop: 12 }}>
             {tokenLeaderboardError}
           </div>
