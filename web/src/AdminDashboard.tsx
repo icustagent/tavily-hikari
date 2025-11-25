@@ -1384,7 +1384,7 @@ function AdminDashboard(): JSX.Element {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <input
                 type="text"
-                className="input"
+                className="input input-bordered"
                 placeholder={tokenStrings.notePlaceholder}
                 value={newTokenNote}
                 onChange={(e) => setNewTokenNote(e.target.value)}
@@ -1667,7 +1667,7 @@ function AdminDashboard(): JSX.Element {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <input
                   type="text"
-                  className="input"
+                  className="input input-bordered"
                   placeholder={keyStrings.placeholder}
                   aria-label={keyStrings.placeholder}
                   value={newKey}
@@ -2669,12 +2669,12 @@ function KeyDetails({ id, onBack }: { id: string; onBack: () => void }): JSX.Ele
             <p className="panel-description">{keyDetailsStrings.usageDescription}</p>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <select value={period} onChange={(e) => setPeriod(e.target.value as any)} className="input" aria-label={keyDetailsStrings.usageTitle}>
+            <select value={period} onChange={(e) => setPeriod(e.target.value as any)} className="select select-bordered" aria-label={keyDetailsStrings.usageTitle}>
               <option value="day">{keyDetailsStrings.periodOptions.day}</option>
               <option value="week">{keyDetailsStrings.periodOptions.week}</option>
               <option value="month">{keyDetailsStrings.periodOptions.month}</option>
             </select>
-            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="input" />
+            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="input input-bordered" />
             <button type="button" className="btn btn-primary" onClick={() => void load()} disabled={loading}>
               {keyDetailsStrings.apply}
             </button>

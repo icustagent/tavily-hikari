@@ -697,16 +697,6 @@ button {
   gap: 12px;
 }
 
-.input {
-  padding: 8px 12px;
-  border-radius: 10px;
-  border: 1px solid rgba(15, 23, 42, 0.16);
-  background: rgba(255, 255, 255, 0.95);
-  font: inherit;
-  color: inherit;
-  min-height: 36px;
-}
-
 button:disabled {
   opacity: 0.6;
   cursor: not-allowed;

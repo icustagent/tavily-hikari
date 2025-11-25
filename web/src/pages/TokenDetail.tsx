@@ -721,7 +721,7 @@ export default function TokenDetail({ id, onBack }: { id: string; onBack?: () =>
               <label htmlFor={periodSelectId}>Period</label>
               <select
                 id={periodSelectId}
-                className="input"
+                className="select select-bordered"
                 value={period}
                 onChange={(e) => { const next = e.target.value as Period; setPeriod(next); applyStartInput('', next) }}
               >
@@ -736,7 +736,7 @@ export default function TokenDetail({ id, onBack }: { id: string; onBack?: () =>
                 <input
                   id={sinceInputId}
                   type="date"
-                  className="input"
+                  className="input input-bordered"
                   max={defaultInputValue('day')}
                   value={sinceInput}
                   onChange={(e) => handleStartChange(period, e.target.value)}
@@ -746,7 +746,7 @@ export default function TokenDetail({ id, onBack }: { id: string; onBack?: () =>
                 <input
                   id={sinceInputId}
                   type="week"
-                  className="input"
+                  className="input input-bordered"
                   max={defaultInputValue('week')}
                   value={sinceInput}
                   onChange={(e) => handleStartChange(period, e.target.value)}
@@ -756,7 +756,7 @@ export default function TokenDetail({ id, onBack }: { id: string; onBack?: () =>
                 <input
                   id={sinceInputId}
                   type="month"
-                  className="input"
+                  className="input input-bordered"
                   max={defaultInputValue('month')}
                   value={sinceInput}
                   onChange={(e) => handleStartChange(period, e.target.value)}
@@ -849,7 +849,7 @@ export default function TokenDetail({ id, onBack }: { id: string; onBack?: () =>
         </div>
         <div className="table-pagination">
           <span>Per page</span>
-          <select className="input" value={perPage} onChange={(e) => { setPerPage(Number(e.target.value)); void goToPage(1) }}>
+          <select className="select select-bordered" value={perPage} onChange={(e) => { setPerPage(Number(e.target.value)); void goToPage(1) }}>
             {[10, 20, 50, 100].map((v) => <option key={v} value={v}>{v}</option>)}
           </select>
           <button
