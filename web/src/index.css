@@ -1630,8 +1630,50 @@ tbody .log-details-row:hover {
   gap: 6px;
   font-size: 0.78rem;
   font-weight: 600;
-  text-transform: uppercase;
   letter-spacing: 0.02em;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  text-align: center;
+  min-width: 72px;
+}
+
+.status-pill-success {
+  /* align with normal quota pill (teal) */
+  background: rgba(15, 118, 110, 0.12);
+  color: #0f766e;
+}
+
+.status-pill-warning {
+  /* align with hourly quota pill */
+  background: rgba(247, 144, 9, 0.18);
+  color: #b45309;
+}
+
+.status-pill-error {
+  /* align with daily quota pill */
+  background: rgba(248, 113, 113, 0.15);
+  color: #b91c1c;
+}
+
+.status-pill-info {
+  /* align with monthly quota pill */
+  background: rgba(139, 92, 246, 0.18);
+  color: #5b21b6;
+}
+
+.status-pill-neutral {
+  background: rgba(15, 23, 42, 0.06);
+  color: #475569;
 }
 
 .kpi-up {

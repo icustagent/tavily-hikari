@@ -3,6 +3,7 @@ import { Icon } from '@iconify/react'
 import { Chart as ChartJS, BarElement, CategoryScale, Legend, LinearScale, Tooltip, type ChartOptions } from 'chart.js'
 import { Bar } from 'react-chartjs-2'
 import { fetchTokenUsageSeries, rotateTokenSecret, type TokenUsageBucket } from '../api'
+import { StatusBadge, type StatusTone } from '../components/StatusBadge'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend)
 
@@ -79,12 +80,12 @@ function formatLogTime(ts: number | null, period: Period) {
   }
 }
 
-function statusClass(status: string): string {
+function statusTone(status: string): StatusTone {
   const s = status.toLowerCase()
-  if (s === 'active' || s === 'success') return 'badge badge-success badge-sm status-badge'
-  if (s === 'exhausted' || s === 'quota_exhausted') return 'badge badge-warning badge-sm status-badge'
-  if (s === 'error') return 'badge badge-error badge-sm status-badge'
-  return 'badge badge-ghost badge-sm status-badge'
+  if (s === 'active' || s === 'success') return 'success'
+  if (s === 'exhausted' || s === 'quota_exhausted') return 'warning'
+  if (s === 'error') return 'error'
+  return 'neutral'
 }
 
 function statusLabel(status: string): string {
@@ -654,9 +655,9 @@ export default function TokenDetail({ id, onBack }: { id: string; onBack?: () =>
           <InfoCard
             label="Status"
             value={
-              <span className={info?.enabled ? 'badge badge-success badge-sm status-badge' : 'badge badge-error badge-sm status-badge'}>
+              <StatusBadge tone={info?.enabled ? 'success' : 'error'}>
                 {info?.enabled ? 'Enabled' : 'Disabled'}
-              </span>
+              </StatusBadge>
             }
           />
           <InfoCard label="Total Requests" value={formatNumber(info?.total_requests ?? 0)} />
@@ -820,7 +821,9 @@ export default function TokenDetail({ id, onBack }: { id: string; onBack?: () =>
                         aria-expanded={expandedLogs.has(l.id)}
                         aria-controls={`token-log-details-${l.id}`}
                       >
-                        <span className={statusClass(l.result_status)}>{statusLabel(l.result_status)}</span>
+                        <StatusBadge tone={statusTone(l.result_status)}>
+                          {statusLabel(l.result_status)}
+                        </StatusBadge>
                         <Icon
                           icon={expandedLogs.has(l.id) ? 'mdi:chevron-up' : 'mdi:chevron-down'}
                           width={18}

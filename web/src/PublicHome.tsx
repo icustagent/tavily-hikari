@@ -1,5 +1,6 @@
 import React, { ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 import { Icon } from '@iconify/react'
+import { StatusBadge, type StatusTone } from './components/StatusBadge'
 import {
   fetchPublicMetrics,
   fetchProfile,
@@ -336,12 +337,12 @@ function PublicHome(): JSX.Element {
     }
   }
 
-  const statusClass = (status: string): string => {
+  const statusTone = (status: string): StatusTone => {
     const normalized = status.toLowerCase()
-    if (normalized === 'active' || normalized === 'success') return 'badge badge-success badge-sm status-badge'
-    if (normalized === 'exhausted' || normalized === 'quota_exhausted') return 'badge badge-warning badge-sm status-badge'
-    if (normalized === 'error') return 'badge badge-error badge-sm status-badge'
-    return 'badge badge-ghost badge-sm status-badge'
+    if (normalized === 'active' || normalized === 'success') return 'success'
+    if (normalized === 'exhausted' || normalized === 'quota_exhausted') return 'warning'
+    if (normalized === 'error') return 'error'
+    return 'neutral'
   }
 
   return (
@@ -572,7 +573,9 @@ function PublicHome(): JSX.Element {
                           aria-label={expandedPublicLogs.has(log.id) ? publicStrings.logs.toggles.hide : publicStrings.logs.toggles.show}
                           title={expandedPublicLogs.has(log.id) ? publicStrings.logs.toggles.hide : publicStrings.logs.toggles.show}
                         >
-                          <span className={statusClass(log.result_status)}>{log.result_status}</span>
+                          <StatusBadge tone={statusTone(log.result_status)}>
+                            {log.result_status}
+                          </StatusBadge>
                           <Icon
                             icon={expandedPublicLogs.has(log.id) ? 'mdi:chevron-up' : 'mdi:chevron-down'}
                             width={18}

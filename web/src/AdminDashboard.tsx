@@ -1,4 +1,5 @@
 import { Icon } from '@iconify/react'
+import { StatusBadge, type StatusTone } from './components/StatusBadge'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import LanguageSwitcher from './components/LanguageSwitcher'
 import TokenDetail from './pages/TokenDetail'
@@ -227,20 +228,21 @@ function formatDateOnly(value: number | null): string {
   return `${y}-${m}-${day}`
 }
 
-function statusClass(status: string): string {
+function statusTone(status: string): StatusTone {
   const normalized = status.toLowerCase()
-  if (normalized === 'active' || normalized === 'success') {
-    return 'badge badge-success badge-sm status-badge'
-  }
-  if (normalized === 'exhausted' || normalized === 'quota_exhausted') {
-    return 'badge badge-warning badge-sm status-badge'
-  }
-  // 'deleted' 由 deleted_at 字段控制，这里仅兜底
-  if (normalized === 'deleted') return 'badge badge-ghost badge-sm status-badge'
-  if (normalized === 'error') {
-    return 'badge badge-error badge-sm status-badge'
-  }
-  return 'badge badge-ghost badge-sm status-badge'
+  if (normalized === 'active' || normalized === 'success') return 'success'
+  if (normalized === 'exhausted' || normalized === 'quota_exhausted') return 'warning'
+  if (normalized === 'error') return 'error'
+  if (normalized === 'deleted') return 'neutral'
+  return 'neutral'
+}
+
+function quotaTone(quotaState: string): StatusTone {
+  const normalized = quotaState.toLowerCase()
+  if (normalized === 'hour') return 'warning'
+  if (normalized === 'day') return 'error'
+  if (normalized === 'month') return 'info'
+  return 'success'
 }
 
 function statusLabel(status: string, strings: AdminTranslations): string {
@@ -1537,12 +1539,12 @@ function AdminDashboard(): JSX.Element {
                       <td>{t.note || '—'}</td>
                       <td>{formatNumber(t.total_requests)}</td>
                       <td>
-                        <span
+                        <StatusBadge
+                          tone={quotaTone(quotaStateKey)}
                           className={`token-quota-pill token-quota-pill-${quotaStateKey}`}
-                          title={quotaTitle}
                         >
                           {quotaLabel}
-                        </span>
+                        </StatusBadge>
                       </td>
                       <td>{formatTimestamp(t.last_used_at)}</td>
                       {isAdmin && (
@@ -1739,7 +1741,9 @@ function AdminDashboard(): JSX.Element {
                         </div>
                       </td>
                       <td>
-                        <span className={statusClass(item.status)}>{statusLabel(item.status, adminStrings)}</span>
+                        <StatusBadge tone={statusTone(item.status)}>
+                          {statusLabel(item.status, adminStrings)}
+                        </StatusBadge>
                       </td>
                       <td>{formatNumber(total)}</td>
                       <td>{formatNumber(item.success_count)}</td>
@@ -2006,7 +2010,7 @@ function AdminDashboard(): JSX.Element {
                         <td>{jobTypeLabel}</td>
                         <td>{keyId ?? '—'}</td>
                         <td>
-                          <span className={statusClass(j.status)}>{j.status}</span>
+                          <StatusBadge tone={statusTone(j.status)}>{j.status}</StatusBadge>
                         </td>
                         <td>{j.attempt}</td>
                         <td>{started ? startedTimeLabel : '—'}</td>
@@ -2404,7 +2408,9 @@ function LogRow({ log, expanded, onToggle, strings }: LogRowProps): JSX.Element 
             aria-label={requestButtonLabel}
             title={requestButtonLabel}
           >
-            <span className={statusClass(log.result_status)}>{statusLabel(log.result_status, strings)}</span>
+            <StatusBadge tone={statusTone(log.result_status)}>
+              {statusLabel(log.result_status, strings)}
+            </StatusBadge>
             <Icon icon={expanded ? 'mdi:chevron-up' : 'mdi:chevron-down'} width={18} height={18} className="log-result-icon" />
           </button>
         </td>
@@ -2722,7 +2728,11 @@ function KeyDetails({ id, onBack }: { id: string; onBack: () => void }): JSX.Ele
                     <td>{formatTimestamp(log.created_at)}</td>
                     <td>{log.http_status ?? '—'}</td>
                     <td>{log.mcp_status ?? '—'}</td>
-                    <td><span className={statusClass(log.result_status)}>{statusLabel(log.result_status, adminStrings)}</span></td>
+                    <td>
+                      <StatusBadge tone={statusTone(log.result_status)}>
+                        {statusLabel(log.result_status, adminStrings)}
+                      </StatusBadge>
+                    </td>
                     <td>{formatErrorMessage(log, adminStrings.logs.errors)}</td>
                   </tr>
                 ))}
