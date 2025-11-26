@@ -338,10 +338,10 @@ function PublicHome(): JSX.Element {
 
   const statusClass = (status: string): string => {
     const normalized = status.toLowerCase()
-    if (normalized === 'active' || normalized === 'success') return 'status-badge status-active'
-    if (normalized === 'exhausted' || normalized === 'quota_exhausted') return 'status-badge status-exhausted'
-    if (normalized === 'error') return 'status-badge status-error'
-    return 'status-badge status-unknown'
+    if (normalized === 'active' || normalized === 'success') return 'badge badge-success badge-sm status-badge'
+    if (normalized === 'exhausted' || normalized === 'quota_exhausted') return 'badge badge-warning badge-sm status-badge'
+    if (normalized === 'error') return 'badge badge-error badge-sm status-badge'
+    return 'badge badge-ghost badge-sm status-badge'
   }
 
   return (
@@ -537,14 +537,14 @@ function PublicHome(): JSX.Element {
         </div>
         <div className="table-wrapper">
           {(!isFullToken(token) || invalidToken) ? (
-            <div className="empty-state">
+            <div className="empty-state alert">
               <div>{publicStrings.logs.empty.noToken}</div>
               <div style={{ marginTop: 4, opacity: 0.9 }}>{publicStrings.logs.empty.hint}</div>
             </div>
           ) : publicLogsLoading ? (
-            <div className="empty-state">{publicStrings.logs.empty.loading}</div>
+            <div className="empty-state alert">{publicStrings.logs.empty.loading}</div>
           ) : publicLogs.length === 0 ? (
-            <div className="empty-state">{publicStrings.logs.empty.none}</div>
+            <div className="empty-state alert">{publicStrings.logs.empty.none}</div>
           ) : (
             <table className="token-detail-table">
               <thead>

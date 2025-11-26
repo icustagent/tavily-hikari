@@ -230,17 +230,17 @@ function formatDateOnly(value: number | null): string {
 function statusClass(status: string): string {
   const normalized = status.toLowerCase()
   if (normalized === 'active' || normalized === 'success') {
-    return 'status-badge status-active'
+    return 'badge badge-success badge-sm status-badge'
   }
   if (normalized === 'exhausted' || normalized === 'quota_exhausted') {
-    return 'status-badge status-exhausted'
+    return 'badge badge-warning badge-sm status-badge'
   }
   // 'deleted' 由 deleted_at 字段控制，这里仅兜底
-  if (normalized === 'deleted') return 'status-badge status-unknown'
+  if (normalized === 'deleted') return 'badge badge-ghost badge-sm status-badge'
   if (normalized === 'error') {
-    return 'status-badge status-error'
+    return 'badge badge-error badge-sm status-badge'
   }
-  return 'status-badge status-unknown'
+  return 'badge badge-ghost badge-sm status-badge'
 }
 
 function statusLabel(status: string, strings: AdminTranslations): string {
@@ -1250,11 +1250,11 @@ function AdminDashboard(): JSX.Element {
         </section>
         <section className="surface panel token-leaderboard-panel">
           <div className="table-wrapper jobs-table-wrapper token-leaderboard-wrapper">
-            {tokenLeaderboardView.length === 0 ? (
-              <div className="empty-state">
-                {tokenLeaderboardLoading ? tokenLeaderboardStrings.empty.loading : tokenLeaderboardStrings.empty.none}
-              </div>
-            ) : (
+          {tokenLeaderboardView.length === 0 ? (
+            <div className="empty-state alert">
+              {tokenLeaderboardLoading ? tokenLeaderboardStrings.empty.loading : tokenLeaderboardStrings.empty.none}
+            </div>
+          ) : (
               <table className="jobs-table token-leaderboard-table">
                 <thead>
                   <tr>
@@ -1483,7 +1483,7 @@ function AdminDashboard(): JSX.Element {
         )}
         <div className="table-wrapper jobs-table-wrapper">
           {tokenList.length === 0 ? (
-            <div className="empty-state">{loading ? tokenStrings.empty.loading : tokenStrings.empty.none}</div>
+            <div className="empty-state alert">{loading ? tokenStrings.empty.loading : tokenStrings.empty.none}</div>
           ) : (
             <table className="jobs-table">
               <thead>
@@ -1688,7 +1688,7 @@ function AdminDashboard(): JSX.Element {
         </div>
         <div className="table-wrapper jobs-table-wrapper">
           {sortedKeys.length === 0 ? (
-            <div className="empty-state">{loading ? keyStrings.empty.loading : keyStrings.empty.none}</div>
+            <div className="empty-state alert">{loading ? keyStrings.empty.loading : keyStrings.empty.none}</div>
           ) : (
             <table>
               <thead>
@@ -1861,7 +1861,7 @@ function AdminDashboard(): JSX.Element {
         </div>
         <div className="table-wrapper jobs-table-wrapper">
           {logs.length === 0 ? (
-            <div className="empty-state">{loading ? logStrings.empty.loading : logStrings.empty.none}</div>
+            <div className="empty-state alert">{loading ? logStrings.empty.loading : logStrings.empty.none}</div>
           ) : (
             <table className="admin-logs-table">
               <thead>
@@ -1951,7 +1951,7 @@ function AdminDashboard(): JSX.Element {
         </div>
         <div className="table-wrapper jobs-table-wrapper">
           {jobs.length === 0 ? (
-            <div className="empty-state">
+            <div className="empty-state alert">
               {loading ? jobsStrings.empty.loading : jobsStrings.empty.none}
             </div>
           ) : (
@@ -2639,7 +2639,7 @@ function KeyDetails({ id, onBack }: { id: string; onBack: () => void }): JSX.Ele
         </div>
         <section className="metrics-grid">
           {(!detail || loading) ? (
-            <div className="empty-state" style={{ gridColumn: '1 / -1' }}>{keyDetailsStrings.loading}</div>
+            <div className="empty-state alert" style={{ gridColumn: '1 / -1' }}>{keyDetailsStrings.loading}</div>
           ) : (
             (() => {
               const limit = detail?.quota_limit ?? null
@@ -2682,7 +2682,7 @@ function KeyDetails({ id, onBack }: { id: string; onBack: () => void }): JSX.Ele
         </div>
         <section className="metrics-grid">
           {(!summary || loading) ? (
-            <div className="empty-state" style={{ gridColumn: '1 / -1' }}>{keyDetailsStrings.loading}</div>
+            <div className="empty-state alert" style={{ gridColumn: '1 / -1' }}>{keyDetailsStrings.loading}</div>
           ) : (
             metricCards.map((m) => (
               <div key={m.id} className="metric-card">
@@ -2704,7 +2704,7 @@ function KeyDetails({ id, onBack }: { id: string; onBack: () => void }): JSX.Ele
         </div>
         <div className="table-wrapper">
           {logs.length === 0 ? (
-            <div className="empty-state">{loading ? keyDetailsStrings.loading : keyDetailsStrings.logsEmpty}</div>
+            <div className="empty-state alert">{loading ? keyDetailsStrings.loading : keyDetailsStrings.logsEmpty}</div>
           ) : (
             <table className="admin-logs-table">
               <thead>

@@ -81,10 +81,10 @@ function formatLogTime(ts: number | null, period: Period) {
 
 function statusClass(status: string): string {
   const s = status.toLowerCase()
-  if (s === 'active' || s === 'success') return 'status-badge status-active'
-  if (s === 'exhausted' || s === 'quota_exhausted') return 'status-badge status-exhausted'
-  if (s === 'error') return 'status-badge status-error'
-  return 'status-badge status-unknown'
+  if (s === 'active' || s === 'success') return 'badge badge-success badge-sm status-badge'
+  if (s === 'exhausted' || s === 'quota_exhausted') return 'badge badge-warning badge-sm status-badge'
+  if (s === 'error') return 'badge badge-error badge-sm status-badge'
+  return 'badge badge-ghost badge-sm status-badge'
 }
 
 function statusLabel(status: string): string {
@@ -654,7 +654,7 @@ export default function TokenDetail({ id, onBack }: { id: string; onBack?: () =>
           <InfoCard
             label="Status"
             value={
-              <span className={info?.enabled ? 'status-badge status-active' : 'status-badge status-error'}>
+              <span className={info?.enabled ? 'badge badge-success badge-sm status-badge' : 'badge badge-error badge-sm status-badge'}>
                 {info?.enabled ? 'Enabled' : 'Disabled'}
               </span>
             }
@@ -702,7 +702,7 @@ export default function TokenDetail({ id, onBack }: { id: string; onBack?: () =>
               />
             </>
           ) : (
-            <div className="empty-state" style={{ gridColumn: '1 / -1' }}>Loading…</div>
+            <div className="empty-state alert" style={{ gridColumn: '1 / -1' }}>Loading…</div>
           )}
         </section>
         <div style={{ marginTop: 16 }}>
@@ -842,7 +842,9 @@ export default function TokenDetail({ id, onBack }: { id: string; onBack?: () =>
                 </Fragment>
               ))}
               {logs.length === 0 && (
-                <tr><td colSpan={5} style={{ padding: 12 }}>{loading ? 'Loading…' : 'No logs yet.'}</td></tr>
+                <tr><td colSpan={5} style={{ padding: 12 }}>
+                  <div className="empty-state alert" style={{ padding: 12 }}>{loading ? 'Loading…' : 'No logs yet.'}</div>
+                </td></tr>
               )}
             </tbody>
           </table>

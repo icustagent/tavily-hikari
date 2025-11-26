@@ -1628,32 +1628,10 @@ tbody .log-details-row:hover {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
-  border-radius: 999px;
   font-size: 0.78rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.02em;
-}
-
-.status-active {
-  background: rgba(34, 197, 94, 0.16);
-  color: #15803d;
-}
-
-.status-exhausted {
-  background: rgba(249, 115, 22, 0.16);
-  color: #c2410c;
-}
-
-.status-error {
-  background: rgba(239, 68, 68, 0.16);
-  color: #b91c1c;
-}
-
-.status-unknown {
-  background: rgba(107, 114, 128, 0.16);
-  color: #4b5563;
 }
 
 .kpi-up {
