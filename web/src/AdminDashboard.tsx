@@ -1487,7 +1487,7 @@ function AdminDashboard(): JSX.Element {
           {tokenList.length === 0 ? (
             <div className="empty-state alert">{loading ? tokenStrings.empty.loading : tokenStrings.empty.none}</div>
           ) : (
-            <table className="jobs-table">
+            <table className="jobs-table tokens-table">
               <thead>
                 <tr>
                   <th>{tokenStrings.table.id}</th>
@@ -1549,7 +1549,7 @@ function AdminDashboard(): JSX.Element {
                       <td>{formatTimestamp(t.last_used_at)}</td>
                       {isAdmin && (
                         <td className="jobs-message-cell">
-                          <div style={{ display: 'flex', gap: 8 }}>
+                          <div className="table-actions">
                             <button
                               type="button"
                               className={`btn btn-circle btn-ghost btn-sm${
@@ -1757,7 +1757,7 @@ function AdminDashboard(): JSX.Element {
                       <td>{formatTimestamp(item.status_changed_at)}</td>
                       {isAdmin && (
                         <td>
-                          <div style={{ display: 'flex', gap: 8 }}>
+                          <div className="table-actions">
                             {item.status === 'disabled' ? (
                               <button
                                 type="button"

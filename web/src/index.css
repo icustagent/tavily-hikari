@@ -1190,7 +1190,7 @@ button:disabled {
 }
 
 .jobs-table-wrapper {
-  overflow-x: hidden;
+  overflow-x: auto;
 }
 
 table {
@@ -1434,13 +1434,56 @@ tbody tr:hover {
   min-width: 0;
 }
 
-.jobs-table th:nth-child(7),
-.jobs-table td.jobs-message-cell {
+.tokens-table {
+  table-layout: fixed;
+}
+
+.tokens-table th,
+.tokens-table td {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tokens-table th:nth-child(1),
+.tokens-table td:nth-child(1) {
+  width: 10%;
+}
+
+.tokens-table th:nth-child(3),
+.tokens-table td:nth-child(3) {
+  width: 12ch;
+}
+
+/* Token table: keep the actions column wide enough for icon buttons */
+.tokens-table th:nth-child(6),
+.tokens-table td:nth-child(6) {
+  width: 220px;
+}
+
+.tokens-table .jobs-message-cell {
+  max-width: none;
+  overflow: visible;
+}
+
+.tokens-table .table-actions {
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+}
+
+.jobs-table:not(.tokens-table) th:nth-child(7),
+.jobs-table:not(.tokens-table) td.jobs-message-cell {
   width: 24%;
 }
 
 .jobs-message-cell {
   max-width: 0;
+}
+
+.table-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .jobs-message-button:focus-visible {
@@ -1468,18 +1511,18 @@ tbody tr:hover {
   color: #111827;
 }
 
-/* Jobs table: prevent start time from wrapping and overflowing */
-.jobs-table th:nth-child(6),
-.jobs-table td:nth-child(6) {
+/* Jobs table: prevent start time from wrapping and overflowing (jobs list only, not tokens table) */
+.jobs-table:not(.tokens-table) th:nth-child(6),
+.jobs-table:not(.tokens-table) td:nth-child(6) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   width: 22ch;
 }
 
-/* Jobs table: keep type column inside its cell */
-.jobs-table th:nth-child(2),
-.jobs-table td:nth-child(2) {
+/* Jobs table: keep type column inside its cell (jobs list only, not tokens table) */
+.jobs-table:not(.tokens-table) th:nth-child(2),
+.jobs-table:not(.tokens-table) td:nth-child(2) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
