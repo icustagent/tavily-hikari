@@ -18,8 +18,8 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: radial-gradient(circle at top left, rgba(99, 102, 241, 0.08), transparent 45%),
-    radial-gradient(circle at bottom right, rgba(236, 72, 153, 0.08), transparent 50%),
+  background: radial-gradient(circle at top left, rgba(59, 130, 246, 0.08), transparent 45%),
+    radial-gradient(circle at bottom right, rgba(139, 92, 246, 0.08), transparent 50%),
     #f5f6fb;
 }
 
@@ -76,10 +76,21 @@ button {
   font-weight: 700;
   letter-spacing: -0.01em;
   color: #111827;
+  display: inline-block;
 }
 
 .hero-title {
-  background: linear-gradient(120deg, #6366f1, #8b5cf6 48%, #ec4899);
+  /* Clean blue → indigo → purple gradient (matches icon cool tones only) */
+  display: inline-block;
+  align-self: center;
+  background: linear-gradient(105deg,
+    #3b82f6 0%,
+    #4f8df8 24%,
+    #5b7dfc 46%,
+    #6366f1 66%,
+    #7c5ce6 82%,
+    #8b5cf6 100%);
+  margin: 0 auto;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
@@ -393,7 +404,7 @@ button {
 }
 
 .guide-tab.active {
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  background: linear-gradient(105deg, #3b82f6 0%, #6366f1 55%, #8b5cf6 100%);
   color: #fff;
   box-shadow: 0 8px 20px rgba(99, 102, 241, 0.25);
 }
@@ -1005,7 +1016,7 @@ button:disabled {
 }
 
 .token-group-chip-active {
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  background: linear-gradient(105deg, #3b82f6 0%, #6366f1 55%, #8b5cf6 100%);
   border-color: transparent;
   color: #ffffff;
   box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25);
