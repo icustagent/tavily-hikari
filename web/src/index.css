@@ -18,8 +18,8 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: radial-gradient(circle at top left, rgba(99, 102, 241, 0.08), transparent 45%),
-    radial-gradient(circle at bottom right, rgba(236, 72, 153, 0.08), transparent 50%),
+  background: radial-gradient(circle at top left, rgba(59, 130, 246, 0.08), transparent 45%),
+    radial-gradient(circle at bottom right, rgba(139, 92, 246, 0.08), transparent 50%),
     #f5f6fb;
 }
 
@@ -76,10 +76,21 @@ button {
   font-weight: 700;
   letter-spacing: -0.01em;
   color: #111827;
+  display: inline-block;
 }
 
 .hero-title {
-  background: linear-gradient(120deg, #6366f1, #8b5cf6 48%, #ec4899);
+  /* Clean blue → indigo → purple gradient (matches icon cool tones only) */
+  display: inline-block;
+  align-self: center;
+  background: linear-gradient(105deg,
+    #3b82f6 0%,
+    #4f8df8 24%,
+    #5b7dfc 46%,
+    #6366f1 66%,
+    #7c5ce6 82%,
+    #8b5cf6 100%);
+  margin: 0 auto;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
@@ -322,17 +333,6 @@ button {
   height: 22px;
 }
 
-.button-secondary {
-  background: #111827;
-  color: #fff;
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.25);
-}
-
-.button-secondary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.3);
-}
-
 .token-copy-button {
   display: inline-flex;
   align-items: center;
@@ -375,10 +375,6 @@ button {
   height: 16px;
 }
 
-.token-copy-button.success {
-  background: #16a34a;
-}
-
 .token-input:focus {
   outline: none;
   border-color: #6366f1;
@@ -408,7 +404,7 @@ button {
 }
 
 .guide-tab.active {
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  background: linear-gradient(105deg, #3b82f6 0%, #6366f1 55%, #8b5cf6 100%);
   color: #fff;
   box-shadow: 0 8px 20px rgba(99, 102, 241, 0.25);
 }
@@ -470,17 +466,7 @@ button {
   color: #1f2937;
 }
 
-.guide-code {
-  margin: 0;
-  padding: 14px 16px;
-  border-radius: 14px;
-  background: rgba(15, 23, 42, 0.92);
-  color: #f8fafc;
-  overflow-x: auto;
-  font-family: 'JetBrains Mono', 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
-  font-size: 0.85rem;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
-}
+/* guide code inherits daisyUI mockup-code defaults; keep only syntax colors below */
 
 .guide-reference {
   margin: 0;
@@ -598,34 +584,42 @@ button {
   height: 20px;
 }
 
-.guide-code[data-lang='json']::before,
-.guide-code[data-lang='toml']::before,
-.guide-code[data-lang='bash']::before {
-  content: attr(data-lang);
-  display: inline-block;
-  margin-bottom: 6px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: rgba(148, 163, 184, 0.2);
-  color: rgba(226, 232, 240, 0.85);
-  font-size: 0.7rem;
+/* guide code: keep mockup-code look-and-feel, but align multi-line text without prefixes */
+.guide-lang-badge {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  pointer-events: none;
   text-transform: uppercase;
 }
 
-.guide-code code {
-  display: block;
-  white-space: pre;
+.guide-code-shell {
+  position: relative;
 }
 
-.guide-code .hl-key {
+.guide-code-shell pre {
+  padding-left: 1.25rem; /* match daisyUI mockup-code vertical padding */
+}
+
+.guide-code-shell pre::before {
+  content: none; /* disable built-in prefix gutter so all lines align */
+  margin-right: 0;
+}
+
+.mockup-code code {
+  white-space: pre;
+  word-break: normal;
+}
+
+.mockup-code .hl-key {
   color: #a5b4fc;
 }
 
-.guide-code .hl-string {
+.mockup-code .hl-string {
   color: #fbcfe8;
 }
 
-.guide-code .hl-comment {
+.mockup-code .hl-comment {
   color: #9ca3af;
   font-style: italic;
 }
@@ -712,151 +706,12 @@ button {
   gap: 12px;
 }
 
-.input {
-  padding: 8px 12px;
-  border-radius: 10px;
-  border: 1px solid rgba(15, 23, 42, 0.16);
-  background: rgba(255, 255, 255, 0.95);
-  font: inherit;
-  color: inherit;
-  min-height: 36px;
-}
-
-.button,
-.refresh-toggle {
-  display: inline-flex !important;
-  align-items: center;
-  border: none;
-  border-radius: 999px;
-  padding: 10px 18px;
-  cursor: pointer;
-  font-weight: 600;
-  text-decoration: none;
-  -webkit-appearance: none;
-  appearance: none;
-  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease, border-color 0.12s ease;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  color: #1f2937;
-}
-
 button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
   box-shadow: none;
   transform: none;
 }
-
-.button:not(.button-primary):not(.button-success):not(:disabled):hover,
-.refresh-toggle:not(:disabled):hover {
-  background: rgba(255, 255, 255, 1);
-  border-color: rgba(99, 102, 241, 0.45);
-  box-shadow: 0 6px 18px rgba(99, 102, 241, 0.18);
-  transform: translateY(-1px);
-}
-
-.button-primary {
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
-  color: #fff;
-  box-shadow: 0 10px 22px rgba(99, 102, 241, 0.28);
-}
-
-.button-primary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 14px 28px rgba(99, 102, 241, 0.32);
-}
-
-.button-success {
-  background: rgba(34, 197, 94, 0.18);
-  color: #166534;
-  box-shadow: 0 10px 20px rgba(34, 197, 94, 0.25);
-}
-
-.button-success:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 14px 26px rgba(34, 197, 94, 0.32);
-}
-
-/* Ensure secondary variant overrides base .button styles (defined above) */
-.button.button-secondary {
-  background: #111827;
-  color: #fff;
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.25);
-}
-
-.button.button-secondary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.3);
-}
-
-.icon-button {
-  border: none;
-  border-radius: 999px;
-  width: 32px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  background: rgba(99, 102, 241, 0.16);
-  color: #4c51bf;
-  cursor: pointer;
-  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease, color 0.12s ease;
-  box-shadow: 0 6px 14px rgba(99, 102, 241, 0.16);
-}
-
-.icon-button:hover {
-  transform: translateY(-1px);
-  background: rgba(79, 70, 229, 0.22);
-  color: #3730a3;
-}
-
-.icon-button-success {
-  background: rgba(34, 197, 94, 0.24);
-  color: #15803d;
-  box-shadow: 0 6px 14px rgba(34, 197, 94, 0.24);
-}
-
-.icon-button-success:hover {
-  background: rgba(22, 163, 74, 0.28);
-  color: #0f5132;
-}
-
-/* Destructive action (e.g., Remove/Delete) */
-.icon-button-danger {
-  background: rgba(239, 68, 68, 0.22);
-  color: #b91c1c;
-  box-shadow: 0 6px 14px rgba(239, 68, 68, 0.24);
-}
-
-.icon-button-danger:hover {
-  background: rgba(220, 38, 38, 0.28);
-  color: #7f1d1d;
-}
-
-.icon-button-loading {
-  background: rgba(99, 102, 241, 0.12);
-  color: #6366f1;
-  box-shadow: none;
-}
-
-.icon-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.65;
-  transform: none;
-  box-shadow: none;
-}
-
-.refresh-toggle {
-  background: rgba(99, 102, 241, 0.1) !important;
-  color: #4c51bf !important;
-}
-
-.refresh-toggle.active {
-  background: rgba(22, 163, 74, 0.16) !important;
-  color: #15803d !important;
-}
-
 .metrics-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -1159,7 +1014,7 @@ button:disabled {
 }
 
 .token-group-chip-active {
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  background: linear-gradient(105deg, #3b82f6 0%, #6366f1 55%, #8b5cf6 100%);
   border-color: transparent;
   color: #ffffff;
   box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25);
@@ -1344,7 +1199,7 @@ button:disabled {
 }
 
 .jobs-table-wrapper {
-  overflow-x: hidden;
+  overflow-x: auto;
 }
 
 table {
@@ -1588,13 +1443,56 @@ tbody tr:hover {
   min-width: 0;
 }
 
-.jobs-table th:nth-child(7),
-.jobs-table td.jobs-message-cell {
+.tokens-table {
+  table-layout: fixed;
+}
+
+.tokens-table th,
+.tokens-table td {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tokens-table th:nth-child(1),
+.tokens-table td:nth-child(1) {
+  width: 10%;
+}
+
+.tokens-table th:nth-child(3),
+.tokens-table td:nth-child(3) {
+  width: 12ch;
+}
+
+/* Token table: keep the actions column wide enough for icon buttons */
+.tokens-table th:nth-child(6),
+.tokens-table td:nth-child(6) {
+  width: 220px;
+}
+
+.tokens-table .jobs-message-cell {
+  max-width: none;
+  overflow: visible;
+}
+
+.tokens-table .table-actions {
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+}
+
+.jobs-table:not(.tokens-table) th:nth-child(7),
+.jobs-table:not(.tokens-table) td.jobs-message-cell {
   width: 24%;
 }
 
 .jobs-message-cell {
   max-width: 0;
+}
+
+.table-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .jobs-message-button:focus-visible {
@@ -1622,18 +1520,18 @@ tbody tr:hover {
   color: #111827;
 }
 
-/* Jobs table: prevent start time from wrapping and overflowing */
-.jobs-table th:nth-child(6),
-.jobs-table td:nth-child(6) {
+/* Jobs table: prevent start time from wrapping and overflowing (jobs list only, not tokens table) */
+.jobs-table:not(.tokens-table) th:nth-child(6),
+.jobs-table:not(.tokens-table) td:nth-child(6) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   width: 22ch;
 }
 
-/* Jobs table: keep type column inside its cell */
-.jobs-table th:nth-child(2),
-.jobs-table td:nth-child(2) {
+/* Jobs table: keep type column inside its cell (jobs list only, not tokens table) */
+.jobs-table:not(.tokens-table) th:nth-child(2),
+.jobs-table:not(.tokens-table) td:nth-child(2) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1782,32 +1680,52 @@ tbody .log-details-row:hover {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
-  border-radius: 999px;
   font-size: 0.78rem;
   font-weight: 600;
-  text-transform: uppercase;
   letter-spacing: 0.02em;
 }
 
-.status-active {
-  background: rgba(34, 197, 94, 0.16);
-  color: #15803d;
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  text-align: center;
+  min-width: 72px;
 }
 
-.status-exhausted {
-  background: rgba(249, 115, 22, 0.16);
-  color: #c2410c;
+.status-pill-success {
+  /* align with normal quota pill (teal) */
+  background: rgba(15, 118, 110, 0.12);
+  color: #0f766e;
 }
 
-.status-error {
-  background: rgba(239, 68, 68, 0.16);
+.status-pill-warning {
+  /* align with hourly quota pill */
+  background: rgba(247, 144, 9, 0.18);
+  color: #b45309;
+}
+
+.status-pill-error {
+  /* align with daily quota pill */
+  background: rgba(248, 113, 113, 0.15);
   color: #b91c1c;
 }
 
-.status-unknown {
-  background: rgba(107, 114, 128, 0.16);
-  color: #4b5563;
+.status-pill-info {
+  /* align with monthly quota pill */
+  background: rgba(139, 92, 246, 0.18);
+  color: #5b21b6;
+}
+
+.status-pill-neutral {
+  background: rgba(15, 23, 42, 0.06);
+  color: #475569;
 }
 
 .kpi-up {

@@ -1,4 +1,5 @@
 import { Icon } from '@iconify/react'
+import { StatusBadge, type StatusTone } from './components/StatusBadge'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import LanguageSwitcher from './components/LanguageSwitcher'
 import TokenDetail from './pages/TokenDetail'
@@ -227,20 +228,21 @@ function formatDateOnly(value: number | null): string {
   return `${y}-${m}-${day}`
 }
 
-function statusClass(status: string): string {
+function statusTone(status: string): StatusTone {
   const normalized = status.toLowerCase()
-  if (normalized === 'active' || normalized === 'success') {
-    return 'status-badge status-active'
-  }
-  if (normalized === 'exhausted' || normalized === 'quota_exhausted') {
-    return 'status-badge status-exhausted'
-  }
-  // 'deleted' 由 deleted_at 字段控制，这里仅兜底
-  if (normalized === 'deleted') return 'status-badge status-unknown'
-  if (normalized === 'error') {
-    return 'status-badge status-error'
-  }
-  return 'status-badge status-unknown'
+  if (normalized === 'active' || normalized === 'success') return 'success'
+  if (normalized === 'exhausted' || normalized === 'quota_exhausted') return 'warning'
+  if (normalized === 'error') return 'error'
+  if (normalized === 'deleted') return 'neutral'
+  return 'neutral'
+}
+
+function quotaTone(quotaState: string): StatusTone {
+  const normalized = quotaState.toLowerCase()
+  if (normalized === 'hour') return 'warning'
+  if (normalized === 'day') return 'error'
+  if (normalized === 'month') return 'info'
+  return 'success'
 }
 
 function statusLabel(status: string, strings: AdminTranslations): string {
@@ -1187,7 +1189,7 @@ function AdminDashboard(): JSX.Element {
             <p>{tokenLeaderboardStrings.description}</p>
           </div>
           <div className="controls" style={{ gap: 12, flexWrap: 'wrap' }}>
-            <button type="button" className="button" onClick={navigateHome}>
+            <button type="button" className="btn btn-ghost" onClick={navigateHome}>
               <Icon icon="mdi:arrow-left" width={18} height={18} />
               &nbsp;{tokenLeaderboardStrings.back}
             </button>
@@ -1239,7 +1241,7 @@ function AdminDashboard(): JSX.Element {
             </div>
             <button
               type="button"
-              className="button"
+              className="btn"
               onClick={() => setTokenLeaderboardNonce((x) => x + 1)}
               disabled={tokenLeaderboardLoading}
             >
@@ -1250,11 +1252,11 @@ function AdminDashboard(): JSX.Element {
         </section>
         <section className="surface panel token-leaderboard-panel">
           <div className="table-wrapper jobs-table-wrapper token-leaderboard-wrapper">
-            {tokenLeaderboardView.length === 0 ? (
-              <div className="empty-state">
-                {tokenLeaderboardLoading ? tokenLeaderboardStrings.empty.loading : tokenLeaderboardStrings.empty.none}
-              </div>
-            ) : (
+          {tokenLeaderboardView.length === 0 ? (
+            <div className="empty-state alert">
+              {tokenLeaderboardLoading ? tokenLeaderboardStrings.empty.loading : tokenLeaderboardStrings.empty.none}
+            </div>
+          ) : (
               <table className="jobs-table token-leaderboard-table">
                 <thead>
                   <tr>
@@ -1352,7 +1354,7 @@ function AdminDashboard(): JSX.Element {
             )}
             <button
               type="button"
-              className="button button-primary"
+              className="btn btn-primary"
               onClick={handleManualRefresh}
               disabled={loading}
             >
@@ -1370,7 +1372,7 @@ function AdminDashboard(): JSX.Element {
               <div className="tooltip" data-tip={tokenStrings.actions.viewLeaderboard}>
                 <button
                   type="button"
-                  className="icon-button"
+                  className="btn btn-circle btn-ghost btn-sm"
                   aria-label={tokenStrings.actions.viewLeaderboard}
                   onClick={navigateTokenLeaderboard}
                 >
@@ -1384,19 +1386,34 @@ function AdminDashboard(): JSX.Element {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <input
                 type="text"
+                className="input input-bordered"
                 placeholder={tokenStrings.notePlaceholder}
                 value={newTokenNote}
                 onChange={(e) => setNewTokenNote(e.target.value)}
-                style={{ padding: '8px 12px', borderRadius: 10, border: '1px solid rgba(15, 23, 42, 0.16)', minWidth: 240 }}
+                style={{ minWidth: 240 }}
                 aria-label={tokenStrings.notePlaceholder}
               />
-              <button type="button" className="button button-primary" onClick={() => void handleAddToken()} disabled={submitting}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => void handleAddToken()}
+                disabled={submitting}
+              >
                 {submitting ? tokenStrings.creating : tokenStrings.newToken}
               </button>
-              <button type="button" className="button" onClick={openBatchDialog} disabled={submitting}>
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={openBatchDialog}
+                disabled={submitting}
+              >
                 {tokenStrings.batchCreate}
               </button>
-              <button type="button" className="button" onClick={navigateTokenLeaderboard}>
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={navigateTokenLeaderboard}
+              >
                 {tokenStrings.actions.viewLeaderboard}
               </button>
             </div>
@@ -1468,9 +1485,9 @@ function AdminDashboard(): JSX.Element {
         )}
         <div className="table-wrapper jobs-table-wrapper">
           {tokenList.length === 0 ? (
-            <div className="empty-state">{loading ? tokenStrings.empty.loading : tokenStrings.empty.none}</div>
+            <div className="empty-state alert">{loading ? tokenStrings.empty.loading : tokenStrings.empty.none}</div>
           ) : (
-            <table className="jobs-table">
+            <table className="jobs-table tokens-table">
               <thead>
                 <tr>
                   <th>{tokenStrings.table.id}</th>
@@ -1522,20 +1539,22 @@ function AdminDashboard(): JSX.Element {
                       <td>{t.note || '—'}</td>
                       <td>{formatNumber(t.total_requests)}</td>
                       <td>
-                        <span
+                        <StatusBadge
+                          tone={quotaTone(quotaStateKey)}
                           className={`token-quota-pill token-quota-pill-${quotaStateKey}`}
-                          title={quotaTitle}
                         >
                           {quotaLabel}
-                        </span>
+                        </StatusBadge>
                       </td>
                       <td>{formatTimestamp(t.last_used_at)}</td>
                       {isAdmin && (
                         <td className="jobs-message-cell">
-                          <div style={{ display: 'flex', gap: 8 }}>
+                          <div className="table-actions">
                             <button
                               type="button"
-                              className={`icon-button${state === 'copied' ? ' icon-button-success' : ''}${state === 'loading' ? ' icon-button-loading' : ''}`}
+                              className={`btn btn-circle btn-ghost btn-sm${
+                                state === 'copied' ? ' btn-success' : ''
+                              }`}
                               title={tokenStrings.actions.copy}
                               aria-label={tokenStrings.actions.copy}
                               onClick={() => void handleCopyToken(t.id, stateKey)}
@@ -1543,9 +1562,11 @@ function AdminDashboard(): JSX.Element {
                             >
                               <Icon icon={state === 'copied' ? 'mdi:check' : 'mdi:content-copy'} width={18} height={18} />
                             </button>
-                          <button
+                            <button
                               type="button"
-                              className={`icon-button${shareState === 'copied' ? ' icon-button-success' : ''}${shareState === 'loading' ? ' icon-button-loading' : ''}`}
+                              className={`btn btn-circle btn-ghost btn-sm${
+                                shareState === 'copied' ? ' btn-success' : ''
+                              }`}
                               title={tokenStrings.actions.share}
                               aria-label={tokenStrings.actions.share}
                               onClick={() => void handleShareToken(t.id, shareStateKey)}
@@ -1555,7 +1576,7 @@ function AdminDashboard(): JSX.Element {
                             </button>
                             <button
                               type="button"
-                              className="icon-button"
+                              className="btn btn-circle btn-ghost btn-sm"
                               title={keyStrings.actions.details}
                               aria-label={keyStrings.actions.details}
                               onClick={() => navigateToken(t.id)}
@@ -1564,7 +1585,7 @@ function AdminDashboard(): JSX.Element {
                             </button>
                             <button
                               type="button"
-                              className="icon-button"
+                              className="btn btn-circle btn-ghost btn-sm"
                               title={t.enabled ? tokenStrings.actions.disable : tokenStrings.actions.enable}
                               aria-label={t.enabled ? tokenStrings.actions.disable : tokenStrings.actions.enable}
                               onClick={() => void toggleToken(t.id, t.enabled)}
@@ -1574,7 +1595,7 @@ function AdminDashboard(): JSX.Element {
                             </button>
                             <button
                               type="button"
-                              className="icon-button"
+                              className="btn btn-circle btn-ghost btn-sm"
                               title={tokenStrings.actions.edit}
                               aria-label={tokenStrings.actions.edit}
                               onClick={() => openTokenNoteEdit(t.id, t.note)}
@@ -1583,13 +1604,18 @@ function AdminDashboard(): JSX.Element {
                             </button>
                             <button
                               type="button"
-                              className="icon-button icon-button-danger"
+                              className="btn btn-circle btn-ghost btn-sm"
                               title={tokenStrings.actions.delete}
                               aria-label={tokenStrings.actions.delete}
                               onClick={() => openTokenDeleteConfirm(t.id)}
                               disabled={deletingId === t.id}
                             >
-                              <Icon icon={deletingId === t.id ? 'mdi:progress-helper' : 'mdi:trash-outline'} width={18} height={18} />
+                              <Icon
+                                icon={deletingId === t.id ? 'mdi:progress-helper' : 'mdi:trash-outline'}
+                                width={18}
+                                height={18}
+                                color="#ef4444"
+                              />
                             </button>
                           </div>
                         </td>
@@ -1609,10 +1635,10 @@ function AdminDashboard(): JSX.Element {
                 .replace('{total}', String(totalPages))}
             </span>
             <div style={{ display: 'inline-flex', gap: 8 }}>
-              <button className="button" onClick={goPrevPage} disabled={tokensPage <= 1}>
+              <button className="btn btn-outline" onClick={goPrevPage} disabled={tokensPage <= 1}>
                 {tokenStrings.pagination.prev}
               </button>
-              <button className="button" onClick={goNextPage} disabled={tokensPage >= totalPages}>
+              <button className="btn btn-outline" onClick={goNextPage} disabled={tokensPage >= totalPages}>
                 {tokenStrings.pagination.next}
               </button>
             </div>
@@ -1648,20 +1674,16 @@ function AdminDashboard(): JSX.Element {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <input
                   type="text"
+                  className="input input-bordered"
                   placeholder={keyStrings.placeholder}
                   aria-label={keyStrings.placeholder}
                   value={newKey}
                   onChange={(e) => setNewKey(e.target.value)}
-                  style={{
-                    padding: '8px 12px',
-                    borderRadius: 10,
-                    border: '1px solid rgba(15, 23, 42, 0.16)',
-                    minWidth: 240,
-                  }}
+                  style={{ minWidth: 240 }}
                 />
                 <button
                   type="button"
-                  className="button button-primary"
+                  className="btn btn-primary"
                   onClick={() => void handleAddKey()}
                   disabled={submitting || !newKey.trim()}
                 >
@@ -1673,7 +1695,7 @@ function AdminDashboard(): JSX.Element {
         </div>
         <div className="table-wrapper jobs-table-wrapper">
           {sortedKeys.length === 0 ? (
-            <div className="empty-state">{loading ? keyStrings.empty.loading : keyStrings.empty.none}</div>
+            <div className="empty-state alert">{loading ? keyStrings.empty.loading : keyStrings.empty.none}</div>
           ) : (
             <table>
               <thead>
@@ -1710,7 +1732,9 @@ function AdminDashboard(): JSX.Element {
                           {isAdmin && (
                             <button
                               type="button"
-                              className={`icon-button${state === 'copied' ? ' icon-button-success' : ''}${state === 'loading' ? ' icon-button-loading' : ''}`}
+                              className={`btn btn-circle btn-ghost btn-sm${
+                                state === 'copied' ? ' btn-success' : ''
+                              }`}
                               title={keyStrings.actions.copy}
                               aria-label={keyStrings.actions.copy}
                               onClick={() => void handleCopySecret(item.id, stateKey)}
@@ -1722,7 +1746,9 @@ function AdminDashboard(): JSX.Element {
                         </div>
                       </td>
                       <td>
-                        <span className={statusClass(item.status)}>{statusLabel(item.status, adminStrings)}</span>
+                        <StatusBadge tone={statusTone(item.status)}>
+                          {statusLabel(item.status, adminStrings)}
+                        </StatusBadge>
                       </td>
                       <td>{formatNumber(total)}</td>
                       <td>{formatNumber(item.success_count)}</td>
@@ -1736,11 +1762,11 @@ function AdminDashboard(): JSX.Element {
                       <td>{formatTimestamp(item.status_changed_at)}</td>
                       {isAdmin && (
                         <td>
-                          <div style={{ display: 'flex', gap: 8 }}>
+                          <div className="table-actions">
                             {item.status === 'disabled' ? (
                               <button
                                 type="button"
-                                className="icon-button"
+                                className="btn btn-circle btn-ghost btn-sm"
                                 title={keyStrings.actions.enable}
                                 aria-label={keyStrings.actions.enable}
                                 onClick={() => void handleToggleDisable(item.id, false)}
@@ -1751,7 +1777,7 @@ function AdminDashboard(): JSX.Element {
                             ) : (
                               <button
                                 type="button"
-                                className="icon-button"
+                                className="btn btn-circle btn-ghost btn-sm"
                                 title={keyStrings.actions.disable}
                                 aria-label={keyStrings.actions.disable}
                                 onClick={() => openDisableConfirm(item.id)}
@@ -1762,17 +1788,22 @@ function AdminDashboard(): JSX.Element {
                             )}
                             <button
                               type="button"
-                              className="icon-button icon-button-danger"
+                              className="btn btn-circle btn-ghost btn-sm"
                               title={keyStrings.actions.delete}
                               aria-label={keyStrings.actions.delete}
                               onClick={() => openDeleteConfirm(item.id)}
                               disabled={deletingId === item.id}
                             >
-                              <Icon icon={deletingId === item.id ? 'mdi:progress-helper' : 'mdi:trash-outline'} width={18} height={18} />
+                              <Icon
+                                icon={deletingId === item.id ? 'mdi:progress-helper' : 'mdi:trash-outline'}
+                                width={18}
+                                height={18}
+                                color="#ef4444"
+                              />
                             </button>
                             <button
                               type="button"
-                              className="icon-button"
+                              className="btn btn-circle btn-ghost btn-sm"
                               title={keyStrings.actions.details}
                               aria-label={keyStrings.actions.details}
                               onClick={() => navigateKey(item.id)}
@@ -1844,7 +1875,7 @@ function AdminDashboard(): JSX.Element {
         </div>
         <div className="table-wrapper jobs-table-wrapper">
           {logs.length === 0 ? (
-            <div className="empty-state">{loading ? logStrings.empty.loading : logStrings.empty.none}</div>
+            <div className="empty-state alert">{loading ? logStrings.empty.loading : logStrings.empty.none}</div>
           ) : (
             <table className="admin-logs-table">
               <thead>
@@ -1878,11 +1909,11 @@ function AdminDashboard(): JSX.Element {
               {logStrings.description} ({safeLogsPage} / {logsTotalPages})
             </span>
             <div style={{ display: 'inline-flex', gap: 8 }}>
-              <button className="button" onClick={goPrevLogsPage} disabled={safeLogsPage <= 1}>
+              <button className="btn btn-outline" onClick={goPrevLogsPage} disabled={safeLogsPage <= 1}>
                 {tokenStrings.pagination.prev}
               </button>
               <button
-                className="button"
+                className="btn btn-outline"
                 onClick={goNextLogsPage}
                 disabled={safeLogsPage >= logsTotalPages}
               >
@@ -1934,7 +1965,7 @@ function AdminDashboard(): JSX.Element {
         </div>
         <div className="table-wrapper jobs-table-wrapper">
           {jobs.length === 0 ? (
-            <div className="empty-state">
+            <div className="empty-state alert">
               {loading ? jobsStrings.empty.loading : jobsStrings.empty.none}
             </div>
           ) : (
@@ -1989,7 +2020,7 @@ function AdminDashboard(): JSX.Element {
                         <td>{jobTypeLabel}</td>
                         <td>{keyId ?? '—'}</td>
                         <td>
-                          <span className={statusClass(j.status)}>{j.status}</span>
+                          <StatusBadge tone={statusTone(j.status)}>{j.status}</StatusBadge>
                         </td>
                         <td>{j.attempt}</td>
                         <td>{started ? startedTimeLabel : '—'}</td>
@@ -2109,14 +2140,14 @@ function AdminDashboard(): JSX.Element {
             </span>
             <div style={{ display: 'inline-flex', gap: 8 }}>
               <button
-                className="button"
+                className="btn btn-outline"
                 onClick={() => setJobsPage((p) => Math.max(1, p - 1))}
                 disabled={jobsPage <= 1}
               >
                 {tokenStrings.pagination.prev}
               </button>
               <button
-                className="button"
+                className="btn btn-outline"
                 onClick={() => setJobsPage((p) => p + 1)}
                 disabled={jobsPage >= Math.ceil(jobsTotal / jobsPerPage)}
               >
@@ -2387,7 +2418,9 @@ function LogRow({ log, expanded, onToggle, strings }: LogRowProps): JSX.Element 
             aria-label={requestButtonLabel}
             title={requestButtonLabel}
           >
-            <span className={statusClass(log.result_status)}>{statusLabel(log.result_status, strings)}</span>
+            <StatusBadge tone={statusTone(log.result_status)}>
+              {statusLabel(log.result_status, strings)}
+            </StatusBadge>
             <Icon icon={expanded ? 'mdi:chevron-up' : 'mdi:chevron-down'} width={18} height={18} className="log-result-icon" />
           </button>
         </td>
@@ -2586,7 +2619,7 @@ function KeyDetails({ id, onBack }: { id: string; onBack: () => void }): JSX.Ele
         <div className="controls">
           <button
             type="button"
-            className={`button${syncState === 'success' ? ' button-success' : ''}`}
+            className={`btn${syncState === 'success' ? ' btn-success' : ''}`}
             onClick={() => void syncUsage()}
             disabled={syncState === 'syncing'}
             aria-busy={syncState === 'syncing'}
@@ -2604,7 +2637,7 @@ function KeyDetails({ id, onBack }: { id: string; onBack: () => void }): JSX.Ele
                 ? keyDetailsStrings.syncSuccess
                 : keyDetailsStrings.syncAction}
           </button>
-          <button type="button" className="button" onClick={onBack}>
+          <button type="button" className="btn btn-ghost" onClick={onBack}>
             <Icon icon="mdi:arrow-left" width={18} height={18} />
             &nbsp;{keyDetailsStrings.back}
           </button>
@@ -2622,7 +2655,7 @@ function KeyDetails({ id, onBack }: { id: string; onBack: () => void }): JSX.Ele
         </div>
         <section className="metrics-grid">
           {(!detail || loading) ? (
-            <div className="empty-state" style={{ gridColumn: '1 / -1' }}>{keyDetailsStrings.loading}</div>
+            <div className="empty-state alert" style={{ gridColumn: '1 / -1' }}>{keyDetailsStrings.loading}</div>
           ) : (
             (() => {
               const limit = detail?.quota_limit ?? null
@@ -2652,20 +2685,20 @@ function KeyDetails({ id, onBack }: { id: string; onBack: () => void }): JSX.Ele
             <p className="panel-description">{keyDetailsStrings.usageDescription}</p>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <select value={period} onChange={(e) => setPeriod(e.target.value as any)} className="input" aria-label={keyDetailsStrings.usageTitle}>
+            <select value={period} onChange={(e) => setPeriod(e.target.value as any)} className="select select-bordered" aria-label={keyDetailsStrings.usageTitle}>
               <option value="day">{keyDetailsStrings.periodOptions.day}</option>
               <option value="week">{keyDetailsStrings.periodOptions.week}</option>
               <option value="month">{keyDetailsStrings.periodOptions.month}</option>
             </select>
-            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="input" />
-            <button type="button" className="button button-primary" onClick={() => void load()} disabled={loading}>
+            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="input input-bordered" />
+            <button type="button" className="btn btn-primary" onClick={() => void load()} disabled={loading}>
               {keyDetailsStrings.apply}
             </button>
           </div>
         </div>
         <section className="metrics-grid">
           {(!summary || loading) ? (
-            <div className="empty-state" style={{ gridColumn: '1 / -1' }}>{keyDetailsStrings.loading}</div>
+            <div className="empty-state alert" style={{ gridColumn: '1 / -1' }}>{keyDetailsStrings.loading}</div>
           ) : (
             metricCards.map((m) => (
               <div key={m.id} className="metric-card">
@@ -2687,7 +2720,7 @@ function KeyDetails({ id, onBack }: { id: string; onBack: () => void }): JSX.Ele
         </div>
         <div className="table-wrapper">
           {logs.length === 0 ? (
-            <div className="empty-state">{loading ? keyDetailsStrings.loading : keyDetailsStrings.logsEmpty}</div>
+            <div className="empty-state alert">{loading ? keyDetailsStrings.loading : keyDetailsStrings.logsEmpty}</div>
           ) : (
             <table className="admin-logs-table">
               <thead>
@@ -2705,7 +2738,11 @@ function KeyDetails({ id, onBack }: { id: string; onBack: () => void }): JSX.Ele
                     <td>{formatTimestamp(log.created_at)}</td>
                     <td>{log.http_status ?? '—'}</td>
                     <td>{log.mcp_status ?? '—'}</td>
-                    <td><span className={statusClass(log.result_status)}>{statusLabel(log.result_status, adminStrings)}</span></td>
+                    <td>
+                      <StatusBadge tone={statusTone(log.result_status)}>
+                        {statusLabel(log.result_status, adminStrings)}
+                      </StatusBadge>
+                    </td>
                     <td>{formatErrorMessage(log, adminStrings.logs.errors)}</td>
                   </tr>
                 ))}

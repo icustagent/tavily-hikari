@@ -3,6 +3,7 @@ import { Icon } from '@iconify/react'
 import { Chart as ChartJS, BarElement, CategoryScale, Legend, LinearScale, Tooltip, type ChartOptions } from 'chart.js'
 import { Bar } from 'react-chartjs-2'
 import { fetchTokenUsageSeries, rotateTokenSecret, type TokenUsageBucket } from '../api'
+import { StatusBadge, type StatusTone } from '../components/StatusBadge'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend)
 
@@ -79,12 +80,12 @@ function formatLogTime(ts: number | null, period: Period) {
   }
 }
 
-function statusClass(status: string): string {
+function statusTone(status: string): StatusTone {
   const s = status.toLowerCase()
-  if (s === 'active' || s === 'success') return 'status-badge status-active'
-  if (s === 'exhausted' || s === 'quota_exhausted') return 'status-badge status-exhausted'
-  if (s === 'error') return 'status-badge status-error'
-  return 'status-badge status-unknown'
+  if (s === 'active' || s === 'success') return 'success'
+  if (s === 'exhausted' || s === 'quota_exhausted') return 'warning'
+  if (s === 'error') return 'error'
+  return 'neutral'
 }
 
 function statusLabel(status: string): string {
@@ -654,9 +655,9 @@ export default function TokenDetail({ id, onBack }: { id: string; onBack?: () =>
           <InfoCard
             label="Status"
             value={
-              <span className={info?.enabled ? 'status-badge status-active' : 'status-badge status-error'}>
+              <StatusBadge tone={info?.enabled ? 'success' : 'error'}>
                 {info?.enabled ? 'Enabled' : 'Disabled'}
-              </span>
+              </StatusBadge>
             }
           />
           <InfoCard label="Total Requests" value={formatNumber(info?.total_requests ?? 0)} />
@@ -702,7 +703,7 @@ export default function TokenDetail({ id, onBack }: { id: string; onBack?: () =>
               />
             </>
           ) : (
-            <div className="empty-state" style={{ gridColumn: '1 / -1' }}>Loading…</div>
+            <div className="empty-state alert" style={{ gridColumn: '1 / -1' }}>Loading…</div>
           )}
         </section>
         <div style={{ marginTop: 16 }}>
@@ -721,7 +722,7 @@ export default function TokenDetail({ id, onBack }: { id: string; onBack?: () =>
               <label htmlFor={periodSelectId}>Period</label>
               <select
                 id={periodSelectId}
-                className="input"
+                className="select select-bordered"
                 value={period}
                 onChange={(e) => { const next = e.target.value as Period; setPeriod(next); applyStartInput('', next) }}
               >
@@ -736,7 +737,7 @@ export default function TokenDetail({ id, onBack }: { id: string; onBack?: () =>
                 <input
                   id={sinceInputId}
                   type="date"
-                  className="input"
+                  className="input input-bordered"
                   max={defaultInputValue('day')}
                   value={sinceInput}
                   onChange={(e) => handleStartChange(period, e.target.value)}
@@ -746,7 +747,7 @@ export default function TokenDetail({ id, onBack }: { id: string; onBack?: () =>
                 <input
                   id={sinceInputId}
                   type="week"
-                  className="input"
+                  className="input input-bordered"
                   max={defaultInputValue('week')}
                   value={sinceInput}
                   onChange={(e) => handleStartChange(period, e.target.value)}
@@ -756,7 +757,7 @@ export default function TokenDetail({ id, onBack }: { id: string; onBack?: () =>
                 <input
                   id={sinceInputId}
                   type="month"
-                  className="input"
+                  className="input input-bordered"
                   max={defaultInputValue('month')}
                   value={sinceInput}
                   onChange={(e) => handleStartChange(period, e.target.value)}
@@ -820,7 +821,9 @@ export default function TokenDetail({ id, onBack }: { id: string; onBack?: () =>
                         aria-expanded={expandedLogs.has(l.id)}
                         aria-controls={`token-log-details-${l.id}`}
                       >
-                        <span className={statusClass(l.result_status)}>{statusLabel(l.result_status)}</span>
+                        <StatusBadge tone={statusTone(l.result_status)}>
+                          {statusLabel(l.result_status)}
+                        </StatusBadge>
                         <Icon
                           icon={expandedLogs.has(l.id) ? 'mdi:chevron-up' : 'mdi:chevron-down'}
                           width={18}
@@ -842,19 +845,35 @@ export default function TokenDetail({ id, onBack }: { id: string; onBack?: () =>
                 </Fragment>
               ))}
               {logs.length === 0 && (
-                <tr><td colSpan={5} style={{ padding: 12 }}>{loading ? 'Loading…' : 'No logs yet.'}</td></tr>
+                <tr><td colSpan={5} style={{ padding: 12 }}>
+                  <div className="empty-state alert" style={{ padding: 12 }}>{loading ? 'Loading…' : 'No logs yet.'}</div>
+                </td></tr>
               )}
             </tbody>
           </table>
         </div>
         <div className="table-pagination">
           <span>Per page</span>
-          <select className="input" value={perPage} onChange={(e) => { setPerPage(Number(e.target.value)); void goToPage(1) }}>
+          <select className="select select-bordered" value={perPage} onChange={(e) => { setPerPage(Number(e.target.value)); void goToPage(1) }}>
             {[10, 20, 50, 100].map((v) => <option key={v} value={v}>{v}</option>)}
           </select>
-          <button type="button" className="button" onClick={() => void goToPage(page - 1)} disabled={page <= 1 || loadingMore}>Previous</button>
+          <button
+            type="button"
+            className="btn btn-outline"
+            onClick={() => void goToPage(page - 1)}
+            disabled={page <= 1 || loadingMore}
+          >
+            Previous
+          </button>
           <span>Page {page} / {totalPages}</span>
-          <button type="button" className="button" onClick={() => void goToPage(page + 1)} disabled={page >= totalPages || loadingMore}>Next</button>
+          <button
+            type="button"
+            className="btn btn-outline"
+            onClick={() => void goToPage(page + 1)}
+            disabled={page >= totalPages || loadingMore}
+          >
+            Next
+          </button>
         </div>
       </section>
     

@@ -1,5 +1,6 @@
 import React, { ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 import { Icon } from '@iconify/react'
+import { StatusBadge, type StatusTone } from './components/StatusBadge'
 import {
   fetchPublicMetrics,
   fetchProfile,
@@ -336,12 +337,12 @@ function PublicHome(): JSX.Element {
     }
   }
 
-  const statusClass = (status: string): string => {
+  const statusTone = (status: string): StatusTone => {
     const normalized = status.toLowerCase()
-    if (normalized === 'active' || normalized === 'success') return 'status-badge status-active'
-    if (normalized === 'exhausted' || normalized === 'quota_exhausted') return 'status-badge status-exhausted'
-    if (normalized === 'error') return 'status-badge status-error'
-    return 'status-badge status-unknown'
+    if (normalized === 'active' || normalized === 'success') return 'success'
+    if (normalized === 'exhausted' || normalized === 'quota_exhausted') return 'warning'
+    if (normalized === 'error') return 'error'
+    return 'neutral'
   }
 
   return (
@@ -358,10 +359,10 @@ function PublicHome(): JSX.Element {
             </span>
           </div>
           <div className="update-banner-actions">
-            <button type="button" className="button button-primary" onClick={updateBanner.reload}>
+            <button type="button" className="btn btn-primary" onClick={updateBanner.reload}>
               {publicStrings.updateBanner.refresh}
             </button>
-            <button type="button" className="button" onClick={updateBanner.dismiss}>
+            <button type="button" className="btn btn-ghost" onClick={updateBanner.dismiss}>
               {publicStrings.updateBanner.dismiss}
             </button>
           </div>
@@ -395,7 +396,11 @@ function PublicHome(): JSX.Element {
         </div>
         {isAdmin && (
           <div className="public-home-actions">
-            <button type="button" className="button button-primary" onClick={() => { window.location.href = '/admin' }}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => { window.location.href = '/admin' }}
+            >
               {publicStrings.adminButton}
             </button>
           </div>
@@ -505,7 +510,9 @@ function PublicHome(): JSX.Element {
               </div>
               <button
                 type="button"
-                className={`button button-secondary token-copy-button${copyState === 'copied' ? ' success' : ''}`}
+                className={`btn token-copy-button${
+                  copyState === 'copied' ? ' btn-success' : ' btn-secondary'
+                }`}
                 onClick={handleCopyToken}
                 aria-label={publicStrings.copyToken.iconAlt}
               >
@@ -531,14 +538,16 @@ function PublicHome(): JSX.Element {
         </div>
         <div className="table-wrapper">
           {(!isFullToken(token) || invalidToken) ? (
-            <div className="empty-state">
-              <div>{publicStrings.logs.empty.noToken}</div>
-              <div style={{ marginTop: 4, opacity: 0.9 }}>{publicStrings.logs.empty.hint}</div>
+            <div className="empty-state alert">
+              <p style={{ margin: 0 }}>
+                {publicStrings.logs.empty.noToken}{' '}
+                <span style={{ opacity: 0.9 }}>{publicStrings.logs.empty.hint}</span>
+              </p>
             </div>
           ) : publicLogsLoading ? (
-            <div className="empty-state">{publicStrings.logs.empty.loading}</div>
+            <div className="empty-state alert">{publicStrings.logs.empty.loading}</div>
           ) : publicLogs.length === 0 ? (
-            <div className="empty-state">{publicStrings.logs.empty.none}</div>
+            <div className="empty-state alert">{publicStrings.logs.empty.none}</div>
           ) : (
             <table className="token-detail-table">
               <thead>
@@ -566,7 +575,9 @@ function PublicHome(): JSX.Element {
                           aria-label={expandedPublicLogs.has(log.id) ? publicStrings.logs.toggles.hide : publicStrings.logs.toggles.show}
                           title={expandedPublicLogs.has(log.id) ? publicStrings.logs.toggles.hide : publicStrings.logs.toggles.show}
                         >
-                          <span className={statusClass(log.result_status)}>{log.result_status}</span>
+                          <StatusBadge tone={statusTone(log.result_status)}>
+                            {log.result_status}
+                          </StatusBadge>
                           <Icon
                             icon={expandedPublicLogs.has(log.id) ? 'mdi:chevron-up' : 'mdi:chevron-down'}
                             width={18}
@@ -647,9 +658,14 @@ function PublicHome(): JSX.Element {
           {guideDescription.sampleTitle && guideDescription.snippet && (
             <div className="guide-sample">
               <p className="guide-sample-title">{guideDescription.sampleTitle}</p>
-              <pre className="guide-code" data-lang={guideDescription.snippetLanguage}>
-                <code dangerouslySetInnerHTML={{ __html: guideDescription.snippet }} />
-              </pre>
+              <div className="mockup-code relative guide-code-shell">
+                <span className="guide-lang-badge badge badge-outline badge-sm">
+                  {(guideDescription.snippetLanguage ?? 'code').toUpperCase()}
+                </span>
+                <pre>
+                  <code dangerouslySetInnerHTML={{ __html: guideDescription.snippet }} />
+                </pre>
+              </div>
             </div>
           )}
           {guideDescription.reference && (
