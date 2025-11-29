@@ -529,11 +529,14 @@ impl TavilyProxy {
         }
     }
 
-    /// Proxy a Tavily HTTP `/search` call via the usage base URL, performing key rotation
-    /// and recording request logs with sensitive fields redacted.
-    pub async fn proxy_http_search(
+    /// Generic helper to proxy a Tavily HTTP JSON endpoint (e.g. `/search`, `/extract`).
+    /// It injects the Tavily key into the `api_key` field, performs header sanitization,
+    /// records request logs with sensitive fields redacted, and updates key quota state.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn proxy_http_json_endpoint(
         &self,
         usage_base: &str,
+        upstream_path: &str,
         auth_token_id: Option<&str>,
         method: &Method,
         display_path: &str,
@@ -549,7 +552,7 @@ impl TavilyProxy {
         let origin = origin_from_url(&base);
 
         let mut url = base.clone();
-        url.set_path("/search");
+        url.set_path(upstream_path);
 
         let sanitized_headers = sanitize_headers_inner(original_headers, &base, &origin);
 
@@ -654,6 +657,29 @@ impl TavilyProxy {
                 Err(ProxyError::Http(err))
             }
         }
+    }
+
+    /// Proxy a Tavily HTTP `/search` call via the usage base URL, performing key rotation
+    /// and recording request logs with sensitive fields redacted.
+    pub async fn proxy_http_search(
+        &self,
+        usage_base: &str,
+        auth_token_id: Option<&str>,
+        method: &Method,
+        display_path: &str,
+        options: Value,
+        original_headers: &HeaderMap,
+    ) -> Result<(ProxyResponse, AttemptAnalysis), ProxyError> {
+        self.proxy_http_json_endpoint(
+            usage_base,
+            "/search",
+            auth_token_id,
+            method,
+            display_path,
+            options,
+            original_headers,
+        )
+        .await
     }
 
     /// 获取全部 API key 的统计信息，按状态与最近使用时间排序。
