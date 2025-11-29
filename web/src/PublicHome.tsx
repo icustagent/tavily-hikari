@@ -907,10 +907,7 @@ function buildGuideContent(language: Language, baseUrl: string, prettyToken: str
               5）将 <strong>API 密钥 / API key</strong> 填写为步骤 1 中复制的 Hikari 访问令牌（完整的 <code>th-xxxx-xxxxxxxxxxxx</code>），而不是
               Tavily 官方 API key。
             </>,
-            <>
-              6）可按需在 Cherry 中调整返回条数、是否附带答案/日期等选项，这些字段会被原样透传至 Tavily，Hikari 负责轮询 Tavily
-              key 并按访问令牌限额计费与限流。
-            </>,
+            <>6）可按需在 Cherry 中调整返回条数、是否附带答案/日期等选项。</>,
           ],
     },
     other: {
