@@ -23,7 +23,7 @@ use chrono::{DateTime, Datelike, Duration as ChronoDuration, NaiveDate, TimeZone
 use futures_util::Stream;
 use reqwest::header::{HeaderMap as ReqHeaderMap, HeaderValue as ReqHeaderValue};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{Value, json};
 use url::form_urlencoded;
 type SummarySig = (i64, i64, i64, i64, i64, i64, Option<i64>);
 use std::time::Duration;
@@ -644,6 +644,244 @@ fn build_404_landing_inline(css_content: Option<&str>, original: String) -> Stri
         html_escape::encode_text(&original),
         script
     )
+}
+
+#[axum::debug_handler]
+async fn tavily_http_search(
+    State(state): State<Arc<AppState>>,
+    req: Request<Body>,
+) -> Result<Response<Body>, StatusCode> {
+    let (parts, body) = req.into_parts();
+    let method = parts.method.clone();
+    let path = parts.uri.path().to_owned();
+
+    // Read raw body with a reasonable upper bound to avoid memory abuse.
+    let body_bytes = body::to_bytes(body, BODY_LIMIT)
+        .await
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    let mut options: Value =
+        serde_json::from_slice(&body_bytes).map_err(|_| StatusCode::BAD_REQUEST)?;
+    if !options.is_object() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    // Prefer Authorization: Bearer th-<id>-<secret>, fall back to JSON api_key.
+    let auth_bearer = parts
+        .headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.trim().to_string());
+    let header_token = auth_bearer
+        .as_deref()
+        .and_then(|raw| raw.strip_prefix("Bearer "))
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .map(|t| t.to_string());
+
+    let body_token = options
+        .get("api_key")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(|v| v.to_string());
+
+    let token = if let Some(t) = header_token {
+        t
+    } else if let Some(t) = body_token {
+        t
+    } else if state.dev_open_admin {
+        "th-dev-override".to_string()
+    } else {
+        let resp = Response::builder()
+            .status(StatusCode::UNAUTHORIZED)
+            .header(CONTENT_TYPE, "application/json; charset=utf-8")
+            .body(Body::from("{\"error\":\"missing token\"}"))
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        return Ok(resp);
+    };
+
+    let valid = if state.dev_open_admin {
+        true
+    } else {
+        state
+            .proxy
+            .validate_access_token(&token)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    };
+    if !valid {
+        let resp = Response::builder()
+            .status(StatusCode::UNAUTHORIZED)
+            .header(CONTENT_TYPE, "application/json; charset=utf-8")
+            .body(Body::from("{\"error\":\"invalid or disabled token\"}"))
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        return Ok(resp);
+    }
+
+    let auth_token_id = if state.dev_open_admin {
+        Some("dev".to_string())
+    } else {
+        token
+            .strip_prefix("th-")
+            .and_then(|rest| rest.split_once('-').map(|(id, _)| id))
+            .map(|s| s.to_string())
+    };
+
+    // Remove api_key from JSON body before forwarding upstream; it will be replaced by Tavily key.
+    if let Value::Object(ref mut map) = options {
+        map.remove("api_key");
+    }
+
+    // Basic validation for obviously invalid numeric fields.
+    if let Value::Object(ref map) = options
+        && let Some(val) = map.get("max_results").and_then(|v| v.as_i64())
+        && val < 0
+    {
+        let payload = json!({
+            "error": "invalid_request",
+            "message": "max_results must be non-negative",
+        });
+        let resp = Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .header(CONTENT_TYPE, "application/json; charset=utf-8")
+            .body(Body::from(payload.to_string()))
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        return Ok(resp);
+    }
+
+    let token_id_for_logs = auth_token_id.clone();
+
+    // Per-token quota check.
+    if let Some(ref tid) = auth_token_id {
+        match state.proxy.check_token_quota(tid).await {
+            Ok(verdict) => {
+                if !state.dev_open_admin && !verdict.allowed {
+                    let _ = state
+                        .proxy
+                        .record_token_attempt(
+                            tid,
+                            &method,
+                            &path,
+                            None,
+                            Some(StatusCode::TOO_MANY_REQUESTS.as_u16() as i64),
+                            None,
+                            "quota_exhausted",
+                            Some("daily / hourly limit reached for this token"),
+                        )
+                        .await;
+                    let payload = json!({
+                        "error": "quota_exhausted",
+                        "message": "daily / hourly limit reached for this token",
+                    });
+                    let resp = Response::builder()
+                        .status(StatusCode::TOO_MANY_REQUESTS)
+                        .header(CONTENT_TYPE, "application/json; charset=utf-8")
+                        .body(Body::from(payload.to_string()))
+                        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+                    return Ok(resp);
+                }
+            }
+            Err(err) => {
+                eprintln!("quota check failed for /api/tavily/search: {err}");
+                if let Some(tid) = auth_token_id.as_deref() {
+                    let msg = err.to_string();
+                    let _ = state
+                        .proxy
+                        .record_token_attempt(
+                            tid,
+                            &method,
+                            &path,
+                            None,
+                            Some(StatusCode::INTERNAL_SERVER_ERROR.as_u16() as i64),
+                            None,
+                            "error",
+                            Some(msg.as_str()),
+                        )
+                        .await;
+                }
+                return Err(StatusCode::INTERNAL_SERVER_ERROR);
+            }
+        }
+    }
+
+    // Clone headers into reqwest::HeaderMap so we can reuse sanitize logic, and avoid
+    // forwarding our Authorization header to Tavily upstream.
+    let mut headers = clone_headers(&parts.headers);
+    headers.remove(axum::http::header::AUTHORIZATION);
+
+    let result = state
+        .proxy
+        .proxy_http_search(
+            &state.usage_base,
+            auth_token_id.as_deref(),
+            &method,
+            &path,
+            options,
+            &headers,
+        )
+        .await;
+
+    match result {
+        Ok((resp, analysis)) => {
+            if let Some(tid) = token_id_for_logs.as_deref() {
+                let http_code = resp.status.as_u16() as i64;
+                let _ = state
+                    .proxy
+                    .record_token_attempt(
+                        tid,
+                        &method,
+                        &path,
+                        None,
+                        Some(http_code),
+                        analysis.tavily_status_code,
+                        analysis.status,
+                        None,
+                    )
+                    .await;
+            }
+            Ok(build_response(resp))
+        }
+        Err(err) => {
+            eprintln!("tavily http /search proxy error: {err}");
+            if let Some(tid) = token_id_for_logs.as_deref() {
+                let msg = err.to_string();
+                let _ = state
+                    .proxy
+                    .record_token_attempt(
+                        tid,
+                        &method,
+                        &path,
+                        None,
+                        None,
+                        None,
+                        "error",
+                        Some(msg.as_str()),
+                    )
+                    .await;
+            }
+
+            let status = match err {
+                ProxyError::Http(_) | ProxyError::NoAvailableKeys => StatusCode::BAD_GATEWAY,
+                ProxyError::Database(_)
+                | ProxyError::InvalidEndpoint { .. }
+                | ProxyError::QuotaDataMissing { .. }
+                | ProxyError::UsageHttp { .. }
+                | ProxyError::Other(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+
+            let payload = json!({
+                "error": "proxy_error",
+                "message": "upstream unavailable",
+            });
+            let resp = Response::builder()
+                .status(status)
+                .header(CONTENT_TYPE, "application/json; charset=utf-8")
+                .body(Body::from(payload.to_string()))
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            Ok(resp)
+        }
+    }
 }
 
 async fn fetch_summary(
@@ -2013,6 +2251,7 @@ pub async fn serve(
         .route("/api/events", get(sse_dashboard))
         .route("/api/version", get(get_versions))
         .route("/api/profile", get(get_profile))
+        .route("/api/tavily/search", post(tavily_http_search))
         .route("/api/summary", get(fetch_summary))
         .route("/api/public/metrics", get(get_public_metrics))
         .route("/api/keys", get(list_keys))
@@ -3385,12 +3624,15 @@ impl From<ProxySummary> for SummaryView {
 mod tests {
     use super::*;
     use axum::Router;
-    use axum::extract::Query;
-    use axum::routing::any;
+    use axum::extract::{Json, Query};
+    use axum::routing::{any, post};
     use nanoid::nanoid;
     use reqwest::Client;
+    use sqlx::Row;
+    use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
     use std::collections::HashMap;
     use std::path::PathBuf;
+    use tavily_hikari::DEFAULT_UPSTREAM;
     use tokio::net::TcpListener;
 
     fn temp_db_path(prefix: &str) -> PathBuf {
@@ -3428,18 +3670,57 @@ mod tests {
         addr
     }
 
-    async fn spawn_proxy_server(proxy: TavilyProxy) -> SocketAddr {
+    async fn spawn_http_search_mock_asserting_api_key(expected_api_key: String) -> SocketAddr {
+        let app = Router::new().route(
+            "/search",
+            post({
+                move |Json(body): Json<Value>| {
+                    let expected_api_key = expected_api_key.clone();
+                    async move {
+                        let api_key = body.get("api_key").and_then(|v| v.as_str()).unwrap_or("");
+                        assert_eq!(
+                            api_key, expected_api_key,
+                            "upstream api_key should use Tavily key from pool"
+                        );
+                        assert!(
+                            !api_key.starts_with("th-"),
+                            "upstream api_key must not be Hikari token"
+                        );
+                        (
+                            StatusCode::OK,
+                            Json(serde_json::json!({
+                                "status": 200,
+                                "results": [],
+                            })),
+                        )
+                    }
+                }
+            }),
+        );
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app.into_make_service())
+                .await
+                .unwrap();
+        });
+        addr
+    }
+
+    async fn spawn_proxy_server(proxy: TavilyProxy, usage_base: String) -> SocketAddr {
         let state = Arc::new(AppState {
             proxy,
             static_dir: None,
             forward_auth: ForwardAuthConfig::new(None, None, None, None),
             dev_open_admin: false,
-            usage_base: "https://api.tavily.com".to_string(),
+            usage_base,
         });
 
         let app = Router::new()
             .route("/mcp", any(proxy_handler))
             .route("/mcp/*path", any(proxy_handler))
+            .route("/api/tavily/search", post(tavily_http_search))
             .with_state(state);
 
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -3450,6 +3731,249 @@ mod tests {
                 .unwrap();
         });
         addr
+    }
+
+    #[tokio::test]
+    async fn tavily_http_search_returns_401_without_token() {
+        let db_path = temp_db_path("http-search-401-missing");
+        let db_str = db_path.to_string_lossy().to_string();
+
+        let proxy = TavilyProxy::with_endpoint(Vec::<String>::new(), DEFAULT_UPSTREAM, &db_str)
+            .await
+            .expect("proxy created");
+
+        let usage_base = "http://127.0.0.1:58088".to_string();
+        let proxy_addr = spawn_proxy_server(proxy, usage_base).await;
+
+        let client = Client::new();
+        let url = format!("http://{}/api/tavily/search", proxy_addr);
+        let resp = client
+            .post(url)
+            .json(&serde_json::json!({ "query": "test" }))
+            .send()
+            .await
+            .expect("request to proxy succeeds");
+
+        assert_eq!(resp.status(), reqwest::StatusCode::UNAUTHORIZED);
+
+        let body: serde_json::Value = resp.json().await.expect("parse json body");
+        assert_eq!(
+            body.get("error"),
+            Some(&serde_json::Value::String("missing token".into()))
+        );
+
+        let _ = std::fs::remove_file(db_path);
+    }
+
+    #[tokio::test]
+    async fn tavily_http_search_returns_401_for_invalid_token() {
+        let db_path = temp_db_path("http-search-401-invalid");
+        let db_str = db_path.to_string_lossy().to_string();
+
+        let proxy = TavilyProxy::with_endpoint(Vec::<String>::new(), DEFAULT_UPSTREAM, &db_str)
+            .await
+            .expect("proxy created");
+
+        let usage_base = "http://127.0.0.1:58088".to_string();
+        let proxy_addr = spawn_proxy_server(proxy, usage_base).await;
+
+        let client = Client::new();
+        let url = format!("http://{}/api/tavily/search", proxy_addr);
+        let resp = client
+            .post(url)
+            .header("Authorization", "Bearer th-invalid-token")
+            .json(&serde_json::json!({ "query": "test" }))
+            .send()
+            .await
+            .expect("request to proxy succeeds");
+
+        assert_eq!(resp.status(), reqwest::StatusCode::UNAUTHORIZED);
+
+        let body: serde_json::Value = resp.json().await.expect("parse json body");
+        assert_eq!(
+            body.get("error"),
+            Some(&serde_json::Value::String(
+                "invalid or disabled token".into()
+            ))
+        );
+
+        let _ = std::fs::remove_file(db_path);
+    }
+
+    #[tokio::test]
+    async fn tavily_http_search_returns_429_when_quota_exhausted_and_logs_token_attempt() {
+        let db_path = temp_db_path("http-search-429-quota");
+        let db_str = db_path.to_string_lossy().to_string();
+
+        let proxy = TavilyProxy::with_endpoint(Vec::<String>::new(), DEFAULT_UPSTREAM, &db_str)
+            .await
+            .expect("proxy created");
+        let token = proxy
+            .create_access_token(Some("quota-test"))
+            .await
+            .expect("create token");
+
+        // Pre-saturate hourly quota so that the next check in handler will block.
+        let hourly_limit = effective_token_hourly_limit();
+        for _ in 0..hourly_limit {
+            let verdict = proxy
+                .check_token_quota(&token.id)
+                .await
+                .expect("quota check ok");
+            assert!(
+                verdict.allowed,
+                "should be allowed within limit during warmup"
+            );
+        }
+
+        let usage_base = "http://127.0.0.1:58088".to_string();
+        let proxy_addr = spawn_proxy_server(proxy.clone(), usage_base).await;
+
+        let client = Client::new();
+        let url = format!("http://{}/api/tavily/search", proxy_addr);
+        let resp = client
+            .post(url)
+            .header("Authorization", format!("Bearer {}", token.token))
+            .json(&serde_json::json!({ "query": "test quota" }))
+            .send()
+            .await
+            .expect("request to proxy succeeds");
+
+        assert_eq!(resp.status(), reqwest::StatusCode::TOO_MANY_REQUESTS);
+
+        let body: serde_json::Value = resp.json().await.expect("parse json body");
+        assert_eq!(
+            body.get("error"),
+            Some(&serde_json::Value::String("quota_exhausted".into()))
+        );
+
+        // Verify token logs contain a quota_exhausted entry with HTTP 429.
+        let options = SqliteConnectOptions::new()
+            .filename(&db_str)
+            .create_if_missing(true)
+            .journal_mode(SqliteJournalMode::Wal)
+            .busy_timeout(Duration::from_secs(5));
+        let pool = SqlitePoolOptions::new()
+            .min_connections(1)
+            .max_connections(5)
+            .connect_with(options)
+            .await
+            .expect("connect to sqlite");
+
+        let row = sqlx::query(
+            r#"
+            SELECT http_status, mcp_status, result_status
+            FROM auth_token_logs
+            WHERE token_id = ?
+            ORDER BY id DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(&token.id)
+        .fetch_one(&pool)
+        .await
+        .expect("token log row exists");
+
+        let http_status: Option<i64> = row.try_get("http_status").unwrap();
+        let mcp_status: Option<i64> = row.try_get("mcp_status").unwrap();
+        let result_status: String = row.try_get("result_status").unwrap();
+
+        assert_eq!(http_status, Some(429));
+        assert_eq!(mcp_status, None);
+        assert_eq!(result_status, "quota_exhausted");
+
+        let _ = std::fs::remove_file(db_path);
+    }
+
+    #[tokio::test]
+    async fn tavily_http_search_replaces_body_api_key_with_tavily_key() {
+        let db_path = temp_db_path("http-search-replace-key");
+        let db_str = db_path.to_string_lossy().to_string();
+
+        let expected_api_key = "tvly-http-search-key";
+        let proxy = TavilyProxy::with_endpoint(
+            vec![expected_api_key.to_string()],
+            DEFAULT_UPSTREAM,
+            &db_str,
+        )
+        .await
+        .expect("proxy created");
+
+        let access_token = proxy
+            .create_access_token(Some("http-search"))
+            .await
+            .expect("create token");
+
+        let upstream_addr =
+            spawn_http_search_mock_asserting_api_key(expected_api_key.to_string()).await;
+        let usage_base = format!("http://{}", upstream_addr);
+
+        let proxy_addr = spawn_proxy_server(proxy.clone(), usage_base).await;
+
+        let client = Client::new();
+        let url = format!("http://{}/api/tavily/search", proxy_addr);
+        let resp = client
+            .post(url)
+            .json(&serde_json::json!({
+                "api_key": access_token.token,
+                "query": "hello world"
+            }))
+            .send()
+            .await
+            .expect("request to proxy succeeds");
+
+        assert!(resp.status().is_success());
+        let body: serde_json::Value = resp.json().await.expect("parse json body");
+        assert_eq!(body.get("status").and_then(|v| v.as_i64()), Some(200));
+
+        // Verify request_logs entry has success status, structured status, and redacted bodies.
+        let options = SqliteConnectOptions::new()
+            .filename(&db_str)
+            .create_if_missing(true)
+            .journal_mode(SqliteJournalMode::Wal)
+            .busy_timeout(Duration::from_secs(5));
+        let pool = SqlitePoolOptions::new()
+            .min_connections(1)
+            .max_connections(5)
+            .connect_with(options)
+            .await
+            .expect("connect to sqlite");
+
+        let row = sqlx::query(
+            r#"
+            SELECT request_body, response_body, result_status, tavily_status_code
+            FROM request_logs
+            ORDER BY id DESC
+            LIMIT 1
+            "#,
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("request log row exists");
+
+        let request_body: Vec<u8> = row.try_get("request_body").unwrap();
+        let response_body: Vec<u8> = row.try_get("response_body").unwrap();
+        let result_status: String = row.try_get("result_status").unwrap();
+        let tavily_status_code: Option<i64> = row.try_get("tavily_status_code").unwrap();
+
+        let req_text = String::from_utf8_lossy(&request_body);
+        let resp_text = String::from_utf8_lossy(&response_body);
+
+        assert_eq!(result_status, "success");
+        assert_eq!(tavily_status_code, Some(200));
+        assert!(
+            !req_text.contains(expected_api_key)
+                && !req_text.contains(&access_token.token)
+                && !resp_text.contains(expected_api_key)
+                && !resp_text.contains(&access_token.token),
+            "request/response logs must not contain raw api_key secrets",
+        );
+        assert!(
+            req_text.contains("***redacted***") || !req_text.contains("api_key"),
+            "api_key fields in request logs should be redacted",
+        );
+
+        let _ = std::fs::remove_file(db_path);
     }
 
     #[tokio::test]
@@ -3471,7 +3995,8 @@ mod tests {
             .await
             .expect("create access token");
 
-        let proxy_addr = spawn_proxy_server(proxy.clone()).await;
+        let proxy_addr =
+            spawn_proxy_server(proxy.clone(), "https://api.tavily.com".to_string()).await;
 
         let client = Client::new();
         let url = format!(
@@ -3508,7 +4033,8 @@ mod tests {
                 .await
                 .expect("proxy created");
 
-        let proxy_addr = spawn_proxy_server(proxy.clone()).await;
+        let proxy_addr =
+            spawn_proxy_server(proxy.clone(), "https://api.tavily.com".to_string()).await;
 
         let client = Client::new();
         let url = format!(

@@ -311,3 +311,48 @@ Cherry Studio 的接入指南可基于本设计，重点强调：
 - “搜索服务商”选择 Tavily；
 - 将 `API 地址` 改为 Hikari 的 `/api/tavily`；
 - 将“API 密钥”替换为 Hikari 提供的访问令牌（而非 Tavily 官方 key）。
+
+### 8.1 官方 JavaScript SDK（@tavily/core）接入示例
+
+对于直接使用 Tavily 官方 JavaScript SDK（`@tavily/core`）的客户端，可以通过配置 `apiBaseURL` 与 `apiKey` 将流量导向 Hikari：
+
+```ts
+import { tavily } from "@tavily/core";
+
+const client = tavily({
+  // Hikari 控制台生成的访问令牌（th-<id>-<secret>）
+  apiKey: process.env.HIKARI_TAVILY_TOKEN!,
+  // 指向 Hikari 的 Tavily HTTP façade 前缀
+  apiBaseURL: "https://<你的 Hikari 域名>/api/tavily",
+});
+
+const result = await client.search("hello from Hikari proxy", {
+  searchDepth: "basic",
+  maxResults: 3,
+});
+```
+
+对 SDK 而言：
+
+- `apiBaseURL` 应设置为 `https://<host>/api/tavily`（SDK 内部会在此基础上拼接 `/search`）；
+- `apiKey` 使用的是 Hikari 访问令牌，而不是 Tavily 官方 key；
+- 请求体保持 Tavily `/search` 的字段习惯（`search_depth`、`include_raw_content` 等），Hikari 会自动：
+  - 从请求中剥离 `api_key`（访问令牌）；
+  - 为上游 Tavily 注入池内选中的 Tavily key；
+  - 在日志中对所有 `api_key` 字段进行脱敏。
+
+本仓库提供了一个基于 `@tavily/core` 的端到端烟囱测试脚本：
+
+- 路径：`tests/e2e/tavily_http_node.cjs`
+- npm 脚本：`npm run test:tavily-http`
+- 运行前需确保：
+  - Hikari 后端已启动并监听 `http://127.0.0.1:58087`（`scripts/start-backend-dev.sh`）；
+  - `TAVILY_USAGE_BASE` 指向本地/Mock Tavily HTTP 上游；
+  - 导出 Hikari 访问令牌，例如：
+
+    ```bash
+    export HIKARI_TAVILY_TOKEN="th-<id>-<secret>"
+    npm run test:tavily-http
+    ```
+
+这样可以在不访问 Tavily 生产环境的前提下，验证通过官方 SDK → Hikari `/api/tavily/search` → Mock Tavily HTTP 的完整调用链路。
