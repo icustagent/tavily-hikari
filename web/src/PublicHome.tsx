@@ -881,12 +881,11 @@ function buildGuideContent(language: Language, baseUrl: string, prettyToken: str
       title: isEnglish ? 'Cherry Studio' : 'Cherry Studio 桌面客户端',
       steps: isEnglish
         ? [
-            <>1. From the Tavily Hikari user dashboard, create an access token (<code>th-…</code>) and copy it.</>,
+            <>1. Copy your Tavily Hikari access token (<code>th-…</code>) for this client.</>,
             <>2. In Cherry Studio, open <strong>Settings → Web Search</strong>.</>,
             <>3. Choose the search provider <strong>Tavily (API key)</strong>.</>,
             <>
-              4. Set <strong>API URL</strong> to <code>{baseUrl}/api/tavily</code>. In local dev this is usually{' '}
-              <code>http://127.0.0.1:58087/api/tavily</code>.
+              4. Set <strong>API URL</strong> to <code>{baseUrl}/api/tavily</code>.
             </>,
             <>
               5. Set <strong>API key</strong> to the Hikari access token from step 1 (the <code>th-…</code> value),{' '}
@@ -898,12 +897,11 @@ function buildGuideContent(language: Language, baseUrl: string, prettyToken: str
             </>,
           ]
         : [
-            <>1）在 Tavily Hikari 用户总览页中创建访问令牌（<code>th-…</code>），并复制该令牌。</>,
+            <>1）准备好当前客户端要使用的 Tavily Hikari 访问令牌（<code>th-…</code>）。</>,
             <>2）在 Cherry Studio 中打开 <strong>设置 → 网络搜索（Web Search）</strong>。</>,
             <>3）将搜索服务商设置为 <strong>Tavily (API key)</strong>。</>,
             <>
-              4）将 <strong>API 地址 / API URL</strong> 设置为 <code>{baseUrl}/api/tavily</code>，本地开发时通常为{' '}
-              <code>http://127.0.0.1:58087/api/tavily</code>。
+              4）将 <strong>API 地址 / API URL</strong> 设置为 <code>{baseUrl}/api/tavily</code>。
             </>,
             <>
               5）将 <strong>API 密钥 / API key</strong> 填写为步骤 1 中复制的 Hikari 访问令牌（<code>th-…</code>），而不是

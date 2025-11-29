@@ -143,10 +143,12 @@ function CherryStudioMock(): JSX.Element {
                   </label>
                   <div className="flex items-stretch gap-1.5">
                     <input
-                      type="password"
+                      type="text"
                       className="input input-xs md:input-sm input-error flex-1 text-xs"
-                      placeholder={t.tavilyCard.apiKeyPlaceholder}
-                      {...disabledProps}
+                      value={t.tavilyCard.apiKeyPlaceholder}
+                      readOnly
+                      onClick={(e) => e.currentTarget.select()}
+                      onFocus={(e) => e.currentTarget.select()}
                     />
                     <div
                       className="flex h-8 w-8 items-center justify-center rounded-md bg-base-200 text-[0.65rem] text-base-content/40"
@@ -177,7 +179,8 @@ function CherryStudioMock(): JSX.Element {
                     className="input input-xs md:input-sm input-bordered w-full text-xs text-base-content/80"
                     value={apiUrl}
                     readOnly
-                    {...disabledProps}
+                    onClick={(e) => e.currentTarget.select()}
+                    onFocus={(e) => e.currentTarget.select()}
                   />
                   <p className="text-[0.7rem] text-base-content/60">
                     {t.tavilyCard.apiUrlHint}
