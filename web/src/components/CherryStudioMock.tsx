@@ -39,7 +39,11 @@ function TavilyLogo({ className = 'h-5 w-5' }: { className?: string }): JSX.Elem
   )
 }
 
-function CherryStudioMock(): JSX.Element {
+interface CherryStudioMockProps {
+  apiKeyExample: string
+}
+
+function CherryStudioMock({ apiKeyExample }: CherryStudioMockProps): JSX.Element {
   const { language } = useLanguage()
   const strings = useTranslate()
   const t = strings.public.cherryMock
@@ -48,7 +52,7 @@ function CherryStudioMock(): JSX.Element {
     typeof window !== 'undefined' && window.location.origin ? window.location.origin : 'https://your-hikari.example.com'
   const apiUrl = `${baseUrl}/api/tavily`
 
-  // Keep controls visually static only
+  // Keep controls visually static only (except API key input, which should look active but stay read-only)
   const disabledProps = {
     disabled: true,
   } as const
@@ -113,8 +117,7 @@ function CherryStudioMock(): JSX.Element {
                   </div>
                   <button
                     type="button"
-                    className="btn btn-sm min-h-0 h-8 rounded-md border-primary/60 bg-primary/10 px-3 text-xs normal-case text-primary pointer-events-none"
-                    {...disabledProps}
+                    className="btn btn-sm min-h-0 h-8 rounded-md border-primary/60 bg-primary/10 px-3 text-xs normal-case text-primary"
                   >
                     <span className="flex items-center gap-2">
                       <TavilyLogo className="h-4 w-4" />
@@ -145,10 +148,8 @@ function CherryStudioMock(): JSX.Element {
                     <input
                       type="text"
                       className="input input-xs md:input-sm input-bordered flex-1 text-xs"
-                      value={t.tavilyCard.apiKeyPlaceholder}
+                      value={apiKeyExample}
                       readOnly
-                      onClick={(e) => e.currentTarget.select()}
-                      onFocus={(e) => e.currentTarget.select()}
                     />
                     <div
                       className="flex h-8 w-8 items-center justify-center rounded-md bg-base-200 text-[0.65rem] text-base-content/40"
