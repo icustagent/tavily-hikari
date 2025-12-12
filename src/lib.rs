@@ -897,6 +897,7 @@ impl TavilyProxy {
         query: Option<&str>,
         http_status: Option<i64>,
         mcp_status: Option<i64>,
+        counts_business_quota: bool,
         result_status: &str,
         error_message: Option<&str>,
     ) -> Result<(), ProxyError> {
@@ -908,6 +909,7 @@ impl TavilyProxy {
                 query,
                 http_status,
                 mcp_status,
+                counts_business_quota,
                 result_status,
                 error_message,
             )
@@ -1520,6 +1522,7 @@ impl KeyStore {
                 mcp_status INTEGER,
                 result_status TEXT NOT NULL,
                 error_message TEXT,
+                counts_business_quota INTEGER NOT NULL DEFAULT 1,
                 created_at INTEGER NOT NULL
             )
             "#,
@@ -1541,6 +1544,18 @@ impl KeyStore {
             sqlx::query("ALTER TABLE auth_token_logs ADD COLUMN mcp_status INTEGER")
                 .execute(&self.pool)
                 .await?;
+        }
+
+        // Upgrade: add counts_business_quota column if missing
+        if !self
+            .table_column_exists("auth_token_logs", "counts_business_quota")
+            .await?
+        {
+            sqlx::query(
+                "ALTER TABLE auth_token_logs ADD COLUMN counts_business_quota INTEGER NOT NULL DEFAULT 1",
+            )
+            .execute(&self.pool)
+            .await?;
         }
 
         sqlx::query(
@@ -2015,7 +2030,8 @@ impl KeyStore {
                 ) AS external_failure_count,
                 SUM(CASE WHEN result_status = 'quota_exhausted' THEN 1 ELSE 0 END) AS quota_exhausted_count
             FROM auth_token_logs
-            WHERE created_at >= ? AND created_at <= ?
+            WHERE counts_business_quota = 1
+              AND created_at >= ? AND created_at <= ?
             GROUP BY token_id, bucket_start
             ON CONFLICT(token_id, bucket_start, bucket_secs) DO UPDATE SET
                 success_count = token_usage_stats.success_count + excluded.success_count,
@@ -3136,15 +3152,17 @@ impl KeyStore {
         query: Option<&str>,
         http_status: Option<i64>,
         mcp_status: Option<i64>,
+        counts_business_quota: bool,
         result_status: &str,
         error_message: Option<&str>,
     ) -> Result<(), ProxyError> {
         let created_at = Utc::now().timestamp();
+        let counts_business_quota = if counts_business_quota { 1i64 } else { 0i64 };
         sqlx::query(
             r#"
             INSERT INTO auth_token_logs (
-                token_id, method, path, query, http_status, mcp_status, result_status, error_message, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                token_id, method, path, query, http_status, mcp_status, result_status, error_message, counts_business_quota, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(token_id)
@@ -3155,6 +3173,7 @@ impl KeyStore {
         .bind(mcp_status)
         .bind(result_status)
         .bind(error_message)
+        .bind(counts_business_quota)
         .bind(created_at)
         .execute(&self.pool)
         .await?;
@@ -5494,6 +5513,98 @@ mod tests {
         assert!(
             tokens_after.iter().all(|t| t.id != token.id),
             "soft-deleted token should not appear in list"
+        );
+
+        let _ = std::fs::remove_file(db_path);
+    }
+
+    #[tokio::test]
+    async fn rollup_token_usage_stats_counts_only_billable_logs() {
+        let db_path = temp_db_path("rollup-billable");
+        let db_str = db_path.to_string_lossy().to_string();
+        let proxy = TavilyProxy::with_endpoint(Vec::<String>::new(), DEFAULT_UPSTREAM, &db_str)
+            .await
+            .expect("proxy created");
+        let token = proxy
+            .create_access_token(Some("rollup-billable"))
+            .await
+            .expect("create token");
+
+        let store = proxy.key_store.clone();
+        let base_ts = 1_700_000_000i64;
+
+        sqlx::query(
+            r#"
+            INSERT INTO auth_token_logs (
+                token_id, method, path, query, http_status, mcp_status, result_status, error_message, counts_business_quota, created_at
+            ) VALUES (?, 'GET', '/mcp', NULL, 200, NULL, 'success', NULL, 1, ?)
+            "#,
+        )
+        .bind(&token.id)
+        .bind(base_ts)
+        .execute(&store.pool)
+        .await
+        .expect("insert billable log");
+
+        sqlx::query(
+            r#"
+            INSERT INTO auth_token_logs (
+                token_id, method, path, query, http_status, mcp_status, result_status, error_message, counts_business_quota, created_at
+            ) VALUES (?, 'GET', '/mcp', NULL, 200, NULL, 'success', NULL, 0, ?)
+            "#,
+        )
+        .bind(&token.id)
+        .bind(base_ts + 10)
+        .execute(&store.pool)
+        .await
+        .expect("insert nonbillable log");
+
+        proxy
+            .rollup_token_usage_stats()
+            .await
+            .expect("first rollup");
+
+        let (success, system, external, quota): (i64, i64, i64, i64) = sqlx::query_as(
+            "SELECT success_count, system_failure_count, external_failure_count, quota_exhausted_count FROM token_usage_stats WHERE token_id = ?",
+        )
+        .bind(&token.id)
+        .fetch_one(&store.pool)
+        .await
+        .expect("stats row after first rollup");
+        assert_eq!(success, 1, "should count only billable logs");
+        assert_eq!(
+            system + external + quota,
+            0,
+            "no failure counts expected in this test"
+        );
+
+        sqlx::query(
+            r#"
+            INSERT INTO auth_token_logs (
+                token_id, method, path, query, http_status, mcp_status, result_status, error_message, counts_business_quota, created_at
+            ) VALUES (?, 'GET', '/mcp', NULL, 200, NULL, 'success', NULL, 1, ?)
+            "#,
+        )
+        .bind(&token.id)
+        .bind(base_ts + 20)
+        .execute(&store.pool)
+        .await
+        .expect("insert second billable log");
+
+        proxy
+            .rollup_token_usage_stats()
+            .await
+            .expect("second rollup");
+
+        let (success_after,): (i64,) =
+            sqlx::query_as("SELECT success_count FROM token_usage_stats WHERE token_id = ?")
+                .bind(&token.id)
+                .fetch_one(&store.pool)
+                .await
+                .expect("stats row after second rollup");
+        assert_eq!(
+            success_after, 2,
+            "bucket should grow by billable increments"
         );
 
         let _ = std::fs::remove_file(db_path);
