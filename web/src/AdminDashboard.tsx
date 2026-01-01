@@ -1524,6 +1524,7 @@ function AdminDashboard(): JSX.Element {
                   fontFamily:
                     'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
                   lineHeight: 1.4,
+                  borderRadius: 14,
                   whiteSpace: 'pre',
                   overflowY: 'hidden',
                 }}
