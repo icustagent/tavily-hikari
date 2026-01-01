@@ -1742,6 +1742,15 @@ tbody .log-details-row:hover {
   color: #64748b;
 }
 
+/* Inside table wrappers, keep empty states flat (avoid double border/rounded "alert" card). */
+.table-wrapper .empty-state.alert {
+  display: block;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
 /* Reserve a stable slot after token ID to avoid layout shift when toggling status icon */
 .token-status-slot {
   display: inline-block;
