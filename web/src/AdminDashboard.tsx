@@ -1,13 +1,15 @@
 import { Icon } from '@iconify/react'
 import { StatusBadge, type StatusTone } from './components/StatusBadge'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import LanguageSwitcher from './components/LanguageSwitcher'
 import TokenDetail from './pages/TokenDetail'
 import { useTranslate, type AdminTranslations } from './i18n'
 import {
   fetchApiKeys,
   fetchApiKeySecret,
-  addApiKey,
+  addApiKeysBatch,
+  type AddApiKeysBatchResponse,
   deleteApiKey,
   setKeyStatus,
   fetchProfile,
@@ -364,7 +366,19 @@ function AdminDashboard(): JSX.Element {
   const tokenGroupsListRef = useRef<HTMLDivElement | null>(null)
   const [copyState, setCopyState] = useState<Map<string, 'loading' | 'copied'>>(() => new Map())
   const [expandedLogs, setExpandedLogs] = useState<Set<number>>(() => new Set())
-  const [newKey, setNewKey] = useState('')
+  type AddKeysBatchReportState =
+    | { kind: 'success'; response: AddApiKeysBatchResponse }
+    | { kind: 'error'; message: string; input_lines: number; valid_lines: number }
+
+  const [newKeysText, setNewKeysText] = useState('')
+  const [keysBatchExpanded, setKeysBatchExpanded] = useState(false)
+  const keysBatchAnchorRef = useRef<HTMLDivElement | null>(null)
+  const keysBatchCollapsedInputRef = useRef<HTMLInputElement | null>(null)
+  const keysBatchTextareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const keysBatchFooterRef = useRef<HTMLDivElement | null>(null)
+  const keysBatchOverlayRef = useRef<HTMLDivElement | null>(null)
+  const keysBatchReportDialogRef = useRef<HTMLDialogElement | null>(null)
+  const [keysBatchReport, setKeysBatchReport] = useState<AddKeysBatchReportState | null>(null)
   const [newTokenNote, setNewTokenNote] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -388,6 +402,37 @@ function AdminDashboard(): JSX.Element {
   const [batchCreating, setBatchCreating] = useState(false)
   const [batchShareText, setBatchShareText] = useState<string | null>(null)
   const isAdmin = profile?.isAdmin ?? false
+
+  useEffect(() => {
+    if (!keysBatchExpanded) return
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const root = keysBatchAnchorRef.current
+      const overlay = keysBatchOverlayRef.current
+      if (!root && !overlay) return
+      const target = event.target
+      if (
+        target instanceof Node &&
+        (root == null || !root.contains(target)) &&
+        (overlay == null || !overlay.contains(target))
+      ) {
+        setKeysBatchExpanded(false)
+      }
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setKeysBatchExpanded(false)
+      }
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [keysBatchExpanded])
 
   const copyStateKey = useCallback((scope: 'keys' | 'logs' | 'tokens', identifier: string | number) => {
     return `${scope}:${identifier}`
@@ -817,6 +862,109 @@ function AdminDashboard(): JSX.Element {
     })
   }, [dedupedKeys])
 
+  const keysBatchParsed = useMemo(() => {
+    return newKeysText
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+  }, [newKeysText])
+
+  const keysBatchFirstLine = useMemo(() => {
+    return newKeysText.split(/\r?\n/)[0] ?? ''
+  }, [newKeysText])
+
+  const keysBatchFailures = useMemo(() => {
+    if (!keysBatchReport || keysBatchReport.kind !== 'success') return []
+    return keysBatchReport.response.results.filter((item) => item.status === 'failed')
+  }, [keysBatchReport])
+
+  const updateKeysBatchOverlayLayout = useCallback(() => {
+    if (!keysBatchExpanded) return
+    const anchor = keysBatchAnchorRef.current
+    const anchorInput = keysBatchCollapsedInputRef.current
+    const overlay = keysBatchOverlayRef.current
+    const textarea = keysBatchTextareaRef.current
+    if (!anchor || !overlay || !textarea) return
+
+    const anchorRect = anchor.getBoundingClientRect()
+    const layoutAnchorRect = (anchorInput ?? anchor).getBoundingClientRect()
+    const visualViewport = window.visualViewport
+    const visibleTop = visualViewport ? visualViewport.offsetTop : 0
+    const visibleBottom = visualViewport ? visualViewport.offsetTop + visualViewport.height : window.innerHeight
+
+    const viewportWidth = window.innerWidth
+    const overlayWidth = Math.max(0, Math.min(720, viewportWidth - 32))
+    const leftMin = 16
+    const leftMax = Math.max(leftMin, viewportWidth - leftMin - overlayWidth)
+    const preferredLeft = anchorRect.right - overlayWidth
+    const left = Math.min(leftMax, Math.max(leftMin, preferredLeft))
+    const topBelow = layoutAnchorRect.bottom + 8
+
+    overlay.style.left = `${Math.round(left)}px`
+    overlay.style.width = `${Math.round(overlayWidth)}px`
+
+    const fitTextarea = () => {
+      // Reset first so scrollHeight reflects full content.
+      textarea.style.height = 'auto'
+
+      const textareaRect = textarea.getBoundingClientRect()
+      const footer = keysBatchFooterRef.current
+      const footerHeight = footer ? footer.getBoundingClientRect().height : 0
+
+      const viewportBottom = visibleBottom - 16
+      const documentBottom = document.documentElement.scrollHeight - window.scrollY - 16
+      const availableBottom = Math.min(viewportBottom, documentBottom)
+
+      const maxTextareaHeight = Math.max(120, availableBottom - textareaRect.top - footerHeight - 24)
+      const desiredHeight = Math.min(textarea.scrollHeight, maxTextareaHeight)
+
+      textarea.style.height = `${Math.max(120, desiredHeight)}px`
+      textarea.style.overflowY = textarea.scrollHeight > maxTextareaHeight ? 'auto' : 'hidden'
+    }
+
+    // Prefer positioning below the anchor, but flip above if it would go offscreen.
+    overlay.style.top = `${Math.round(topBelow)}px`
+    fitTextarea()
+
+    const overlayRect = overlay.getBoundingClientRect()
+    const overflowBottom = overlayRect.bottom - (visibleBottom - 16)
+    if (overflowBottom > 0) {
+      const topAbove = layoutAnchorRect.top - overlayRect.height - 8
+      const topMin = visibleTop + 16
+      const topMax = Math.max(topMin, visibleBottom - 16 - overlayRect.height)
+      const clampedTop = Math.min(topMax, Math.max(topMin, topAbove))
+      overlay.style.top = `${Math.round(clampedTop)}px`
+      fitTextarea()
+    }
+  }, [keysBatchExpanded])
+
+  useLayoutEffect(() => {
+    if (!keysBatchExpanded) return
+    updateKeysBatchOverlayLayout()
+  }, [keysBatchExpanded, newKeysText, updateKeysBatchOverlayLayout])
+
+  useEffect(() => {
+    if (!keysBatchExpanded) return
+    const onResize = () => updateKeysBatchOverlayLayout()
+    const onScroll = () => updateKeysBatchOverlayLayout()
+    window.addEventListener('resize', onResize)
+    window.addEventListener('scroll', onScroll, { passive: true })
+    window.visualViewport?.addEventListener('resize', onResize)
+    window.visualViewport?.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      window.removeEventListener('resize', onResize)
+      window.removeEventListener('scroll', onScroll)
+      window.visualViewport?.removeEventListener('resize', onResize)
+      window.visualViewport?.removeEventListener('scroll', onScroll)
+    }
+  }, [keysBatchExpanded, updateKeysBatchOverlayLayout])
+
+  useEffect(() => {
+    if (!keysBatchExpanded) return
+    const raf = window.requestAnimationFrame(() => updateKeysBatchOverlayLayout())
+    return () => window.cancelAnimationFrame(raf)
+  }, [keysBatchExpanded, updateKeysBatchOverlayLayout])
+
   const logsTotalPagesRaw = useMemo(
     () => Math.max(1, Math.ceil(logsTotal / LOGS_PER_PAGE)),
     [logsTotal],
@@ -853,19 +1001,28 @@ function AdminDashboard(): JSX.Element {
   }, [])
 
   const handleAddKey = async () => {
-    const value = newKey.trim()
-    if (!value) return
+    const rawLines = newKeysText.split(/\r?\n/)
+    const apiKeys = rawLines.map((line) => line.trim()).filter((line) => line.length > 0)
+    if (apiKeys.length === 0) return
     setSubmitting(true)
     try {
-      await addApiKey(value)
-      setNewKey('')
+      const response = await addApiKeysBatch(apiKeys)
+      setKeysBatchReport({ kind: 'success', response })
+      window.requestAnimationFrame(() => keysBatchReportDialogRef.current?.showModal())
+      setNewKeysText('')
+      setKeysBatchExpanded(false)
       const controller = new AbortController()
       setLoading(true)
       await loadData(controller.signal)
       controller.abort()
     } catch (err) {
       console.error(err)
-      setError(err instanceof Error ? err.message : errorStrings.addKey)
+      const message = err instanceof Error ? err.message : errorStrings.addKeysBatch
+      setKeysBatchReport({ kind: 'error', message, input_lines: rawLines.length, valid_lines: apiKeys.length })
+      window.requestAnimationFrame(() => keysBatchReportDialogRef.current?.showModal())
+      setNewKeysText('')
+      setKeysBatchExpanded(false)
+      setError(message)
     } finally {
       setSubmitting(false)
     }
@@ -960,6 +1117,11 @@ function AdminDashboard(): JSX.Element {
   }
   const closeBatchDialog = () => {
     batchDialogRef.current?.close()
+  }
+
+  const closeKeysBatchReportDialog = () => {
+    keysBatchReportDialogRef.current?.close()
+    setKeysBatchReport(null)
   }
 
   const handleCopyToken = async (id: string, stateKey: string) => {
@@ -1335,7 +1497,57 @@ function AdminDashboard(): JSX.Element {
   const hasTokenGroups = tokenGroupList.length > 0
   return (
     <>
-    <main className="app-shell">
+      {keysBatchExpanded &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            ref={keysBatchOverlayRef}
+            className="card bg-base-100 shadow-xl border border-base-300"
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 16,
+              zIndex: 1000,
+              width: 'min(720px, calc(100vw - 32px))',
+            }}
+          >
+            <div className="card-body" style={{ padding: 16 }}>
+              <textarea
+                ref={keysBatchTextareaRef}
+                className="textarea textarea-bordered textarea-sm w-full"
+                rows={4}
+                placeholder={keyStrings.batch.placeholder}
+                aria-label={keyStrings.batch.placeholder}
+                value={newKeysText}
+                onChange={(e) => setNewKeysText(e.target.value)}
+                style={{
+                  fontFamily:
+                    'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+                  lineHeight: 1.4,
+                  borderRadius: 14,
+                  whiteSpace: 'pre',
+                  overflowY: 'hidden',
+                }}
+              />
+              <div ref={keysBatchFooterRef} className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-xs opacity-70">
+                  <div>{keyStrings.batch.hint}</div>
+                  <div>{keyStrings.batch.count.replace('{count}', formatNumber(keysBatchParsed.length))}</div>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => void handleAddKey()}
+                  disabled={submitting || keysBatchParsed.length === 0}
+                >
+                  {submitting ? keyStrings.adding : keyStrings.addButton}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+      <main className="app-shell">
       <section className="surface app-header">
         <div className="title-group">
           <h1>{headerStrings.title}</h1>
@@ -1668,32 +1880,50 @@ function AdminDashboard(): JSX.Element {
         )}
       </section>
 
-      <section className="surface panel">
-        <div className="panel-header">
-          <div>
+      <section className="surface panel" style={keysBatchExpanded ? { position: 'relative', zIndex: 40 } : undefined}>
+        <div className="panel-header" style={{ flexWrap: 'wrap', gap: 12, alignItems: 'flex-start' }}>
+          <div style={{ flex: '1 1 320px', minWidth: 240 }}>
             <h2>{keyStrings.title}</h2>
             <p className="panel-description">{keyStrings.description}</p>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: '0 1 auto', justifyContent: 'flex-end', marginLeft: 'auto' }}>
             {isAdmin && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input
-                  type="text"
-                  className="input input-bordered"
-                  placeholder={keyStrings.placeholder}
-                  aria-label={keyStrings.placeholder}
-                  value={newKey}
-                  onChange={(e) => setNewKey(e.target.value)}
-                  style={{ minWidth: 240 }}
-                />
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={() => void handleAddKey()}
-                  disabled={submitting || !newKey.trim()}
+              <div
+                ref={keysBatchAnchorRef}
+                onMouseEnter={() => setKeysBatchExpanded(true)}
+                onFocusCapture={() => setKeysBatchExpanded(true)}
+                style={{ position: 'relative' }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    flexWrap: 'wrap',
+                    justifyContent: 'flex-end',
+                    maxWidth: 'min(520px, 100%)',
+                  }}
                 >
-                  {submitting ? keyStrings.adding : keyStrings.addButton}
-                </button>
+                  <input
+                    ref={keysBatchCollapsedInputRef}
+                    type="text"
+                    className="input input-bordered"
+                    placeholder={keyStrings.placeholder}
+                    aria-label={keyStrings.placeholder}
+                    value={keysBatchFirstLine}
+                    onChange={(e) => setNewKeysText(e.target.value)}
+                    style={{ flex: '1 1 160px', minWidth: 160, maxWidth: '100%' }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => void handleAddKey()}
+                    disabled={submitting || keysBatchParsed.length === 0}
+                    style={{ flexShrink: 0 }}
+                  >
+                    {submitting ? keyStrings.adding : keyStrings.addButton}
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -2281,6 +2511,114 @@ function AdminDashboard(): JSX.Element {
         )}
       </div>
     </dialog>
+
+    {/* Batch Add API Keys Report (daisyUI modal) */}
+    <dialog id="batch_add_keys_report_modal" ref={keysBatchReportDialogRef} className="modal">
+      <div className="modal-box" style={{ maxHeight: 'min(calc(100dvh - 6rem), calc(100vh - 6rem))', display: 'flex', flexDirection: 'column' }}>
+        <h3 className="font-bold text-lg" style={{ marginTop: 0 }}>{keyStrings.batch.report.title}</h3>
+        <div style={{ overflowY: 'auto', minHeight: 0, paddingTop: 12 }}>
+          {keysBatchReport?.kind === 'error' ? (
+            <>
+              <div className="alert alert-error">
+                {keysBatchReport.message}
+              </div>
+              <div className="py-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+                <div>
+                  <span className="opacity-70">{keyStrings.batch.report.summary.inputLines}</span> {formatNumber(keysBatchReport.input_lines)}
+                </div>
+                <div>
+                  <span className="opacity-70">{keyStrings.batch.report.summary.validLines}</span> {formatNumber(keysBatchReport.valid_lines)}
+                </div>
+              </div>
+            </>
+          ) : keysBatchReport?.kind === 'success' ? (
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div>
+                <div className="py-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+                  <div>
+                    <span className="opacity-70">{keyStrings.batch.report.summary.inputLines}</span>{' '}
+                    {formatNumber(keysBatchReport.response.summary.input_lines)}
+                  </div>
+                  <div>
+                    <span className="opacity-70">{keyStrings.batch.report.summary.validLines}</span>{' '}
+                    {formatNumber(keysBatchReport.response.summary.valid_lines)}
+                  </div>
+                  <div>
+                    <span className="opacity-70">{keyStrings.batch.report.summary.uniqueInInput}</span>{' '}
+                    {formatNumber(keysBatchReport.response.summary.unique_in_input)}
+                  </div>
+                  <div>
+                    <span className="opacity-70">{keyStrings.batch.report.summary.duplicateInInput}</span>{' '}
+                    {formatNumber(keysBatchReport.response.summary.duplicate_in_input)}
+                  </div>
+                  <div>
+                    <span className="opacity-70">{keyStrings.batch.report.summary.created}</span>{' '}
+                    {formatNumber(keysBatchReport.response.summary.created)}
+                  </div>
+                  <div>
+                    <span className="opacity-70">{keyStrings.batch.report.summary.undeleted}</span>{' '}
+                    {formatNumber(keysBatchReport.response.summary.undeleted)}
+                  </div>
+                  <div>
+                    <span className="opacity-70">{keyStrings.batch.report.summary.existed}</span>{' '}
+                    {formatNumber(keysBatchReport.response.summary.existed)}
+                  </div>
+                  <div>
+                    <span className="opacity-70">{keyStrings.batch.report.summary.failed}</span>{' '}
+                    {formatNumber(keysBatchReport.response.summary.failed)}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="font-bold">{keyStrings.batch.report.failures.title}</h4>
+                {keysBatchFailures.length === 0 ? (
+                  <div className="py-2">{keyStrings.batch.report.failures.none}</div>
+                ) : (
+                  <div
+                    className="overflow-x-auto"
+                    style={{
+                      marginTop: 8,
+                      maxHeight: 'min(calc(100dvh - 18rem), calc(100vh - 18rem))',
+                      overflowY: 'auto',
+                    }}
+                  >
+                    <table className="table table-zebra">
+                      <thead>
+                        <tr>
+                          <th>{keyStrings.batch.report.failures.table.apiKey}</th>
+                          <th>{keyStrings.batch.report.failures.table.error}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {keysBatchFailures.map((item, index) => (
+                          <tr key={`${item.api_key}-${index}`}>
+                            <td style={{ wordBreak: 'break-all' }}>
+                              <code>{item.api_key}</code>
+                            </td>
+                            <td style={{ wordBreak: 'break-word' }}>{item.error || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="py-2">{keyStrings.batch.hint}</div>
+          )}
+        </div>
+        <div className="modal-action" style={{ marginTop: 12 }}>
+          <form method="dialog" onSubmit={(e) => e.preventDefault()} style={{ display: 'flex', gap: 8 }}>
+            <button type="button" className="btn" onClick={closeKeysBatchReportDialog}>
+              {keyStrings.batch.report.close}
+            </button>
+          </form>
+        </div>
+      </div>
+    </dialog>
+
     {/* Disable Confirmation (daisyUI modal) */}
     <dialog id="confirm_disable_modal" ref={disableDialogRef} className="modal">
       <div className="modal-box">

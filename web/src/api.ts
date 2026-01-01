@@ -248,6 +248,37 @@ export async function addApiKey(apiKey: string): Promise<CreateKeyResponse> {
   })
 }
 
+export interface AddApiKeysBatchSummary {
+  input_lines: number
+  valid_lines: number
+  unique_in_input: number
+  created: number
+  undeleted: number
+  existed: number
+  duplicate_in_input: number
+  failed: number
+}
+
+export interface AddApiKeysBatchResult {
+  api_key: string
+  status: string
+  id?: string
+  error?: string
+}
+
+export interface AddApiKeysBatchResponse {
+  summary: AddApiKeysBatchSummary
+  results: AddApiKeysBatchResult[]
+}
+
+export async function addApiKeysBatch(apiKeys: string[]): Promise<AddApiKeysBatchResponse> {
+  return await requestJson('/api/keys/batch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ api_keys: apiKeys }),
+  })
+}
+
 export async function deleteApiKey(id: string): Promise<void> {
   const encoded = encodeURIComponent(id)
   await fetch(`/api/keys/${encoded}`, { method: 'DELETE' }).then((res) => {
