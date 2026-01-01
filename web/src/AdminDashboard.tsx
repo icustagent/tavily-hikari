@@ -1793,10 +1793,8 @@ function AdminDashboard(): JSX.Element {
                           whiteSpace: 'pre',
                         }}
                       />
-                      <div className="text-xs opacity-70" style={{ marginTop: 4 }}>
-                        {keyStrings.batch.hint}
-                      </div>
-                      <div className="card-actions" style={{ justifyContent: 'flex-end', marginTop: 12 }}>
+                      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="text-xs opacity-70">{keyStrings.batch.hint}</div>
                         <button
                           type="button"
                           className="btn btn-primary"
