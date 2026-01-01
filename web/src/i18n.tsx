@@ -259,6 +259,7 @@ interface AdminTranslationsShape {
     batch: {
       placeholder: string
       hint: string
+      count: string
       report: {
         title: string
         close: string
@@ -769,6 +770,7 @@ export const translations: Record<Language, TranslationShape> = {
         batch: {
           placeholder: 'Paste Tavily API keys (one per line)',
           hint: 'One key per line (newline-separated only).',
+          count: '{count} keys',
           report: {
             title: 'Batch Import Report',
             close: 'Done',
@@ -1251,6 +1253,7 @@ export const translations: Record<Language, TranslationShape> = {
         batch: {
           placeholder: '粘贴 Tavily API Key（每行一个）',
           hint: '每行一个 Key，仅支持换行分隔。',
+          count: '非空行 {count}',
           report: {
             title: '批量导入结果',
             close: '完成',

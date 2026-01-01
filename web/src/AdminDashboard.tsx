@@ -1529,7 +1529,10 @@ function AdminDashboard(): JSX.Element {
                 }}
               />
               <div ref={keysBatchFooterRef} className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div className="text-xs opacity-70">{keyStrings.batch.hint}</div>
+                <div className="text-xs opacity-70">
+                  <div>{keyStrings.batch.hint}</div>
+                  <div>{keyStrings.batch.count.replace('{count}', formatNumber(keysBatchParsed.length))}</div>
+                </div>
                 <button
                   type="button"
                   className="btn btn-primary"
