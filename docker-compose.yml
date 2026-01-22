@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     environment:
       PROXY_BIND: 0.0.0.0
-      PROXY_PORT: 8787
+      PROXY_PORT: 58087
       PROXY_DB_PATH: /srv/app/data/tavily_proxy.db
       WEB_STATIC_DIR: /srv/app/web
     ports:
