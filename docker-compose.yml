@@ -3,12 +3,8 @@ services:
     image: ghcr.io/ivanli-cn/tavily-hikari:latest
     container_name: tavilyhikari
     restart: unless-stopped
-    environment:
-      PROXY_BIND: 0.0.0.0
-      PROXY_PORT: 8787
-      PROXY_DB_PATH: /srv/app/data/tavily_proxy.db
-      WEB_STATIC_DIR: /srv/app/web
-      DEV_OPEN_ADMIN: true
+    env_file:
+      - .env
     ports:
       - "8787:8787"
     volumes:
